@@ -2,6 +2,6 @@ steps:
 - name: 'gcr.io/cloud-builders/go'
   args: ['install', '.']
   env: ['PROJECT_ROOT=github.com/matt-tyler/elasticsearch-operator']
-- name: 'gcr.io/cloud-builder/docker'
+- name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--tag=gcr.io/$PROJECT_ID/elasticsearch-operator', '.']
 images: ['gcr.io/$PROJECT_ID/elasticsearch-operator']
