@@ -3,5 +3,9 @@ steps:
   args: ['install', '.']
   env: ['PROJECT_ROOT=github.com/matt-tyler/elasticsearch-operator']
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--tag=gcr.io/$PROJECT_ID/elasticsearch-operator', '.']
+  args: 
+    - build
+    - '--tag=gcr.io/$PROJECT_ID/elasticsearch-operator'
+    - '--file=Dockerfile.cloudbuild'
+    - '.'
 images: ['gcr.io/$PROJECT_ID/elasticsearch-operator']
