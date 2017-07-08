@@ -9,7 +9,9 @@ import (
 var RootCmd = &cobra.Command{
 	Use:   "elasticsearch-operator",
 	Short: "An elasticsearch operator for Kubernetes",
-	Run:   func(cmd *cobra.Command, args []string) {},
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("Hello World")
+	},
 }
 
 func Execute() {

@@ -1,7 +1,9 @@
 steps:
 - name: 'gcr.io/cloud-builders/go'
   args: ['install', '.']
-  env: ['PROJECT_ROOT=github.com/matt-tyler/elasticsearch-operator']
+  env: 
+    - 'PROJECT_ROOT=github.com/matt-tyler/elasticsearch-operator'
+    - 'CGO_ENABLED=0'
 - name: 'gcr.io/cloud-builders/docker'
   args: 
     - build
