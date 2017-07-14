@@ -30,9 +30,12 @@ var RootCmd = &cobra.Command{
 	Use:   "e2e",
 	Short: "Utility for running e2e tests for elasticsearch-operator",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(viper.AllSettings())
-		viper.Unmarshal(&config)
-		Run(config, args)
+		if err := viper.Unmarshal(&config); err != nil {
+			fmt.Println(err.Error())
+		}
+		if err := Run(config, args); err != nil {
+			fmt.Println(err.Error())
+		}
 	},
 }
 
@@ -60,7 +63,7 @@ func init() {
 	RootCmd.PersistentFlags().BoolP("test", "", false, "Run tests")
 	viper.BindPFlag("test", RootCmd.PersistentFlags().Lookup("test"))
 
-	viper.BindEnv("PROJECT_ID")
+	viper.BindEnv("PROJECT")
 
 	viper.BindEnv("ZONE")
 }

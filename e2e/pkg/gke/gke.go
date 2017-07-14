@@ -22,17 +22,17 @@ import (
 )
 
 type GkeClient struct {
-	ProjectId string
-	Zone      string
-	client    *http.Client
+	Project string
+	Zone    string
+	client  *http.Client
 }
 
-func NewGkeClient(gkeClient *GkeClient, ctx context.Context, projectId, zone string) error {
+func NewGkeClient(gkeClient *GkeClient, ctx context.Context, project, zone string) error {
 	client, err := google.DefaultClient(ctx, container.CloudPlatformScope)
 	if err != nil {
 		return err
 	}
-	gkeClient = &GkeClient{projectId, zone, client}
+	*gkeClient = GkeClient{project, zone, client}
 	return nil
 }
 
@@ -43,7 +43,7 @@ func (c *GkeClient) DeleteCluster(clusterId string) (string, error) {
 	}
 
 	projectsZonesClustersService := container.NewProjectsZonesClustersService(service)
-	projectZonesClustersDeleteCall := projectsZonesClustersService.Delete(c.ProjectId, c.Zone, clusterId)
+	projectZonesClustersDeleteCall := projectsZonesClustersService.Delete(c.Project, c.Zone, clusterId)
 
 	op, err := projectZonesClustersDeleteCall.Do()
 	if err != nil {
@@ -121,7 +121,7 @@ func (c *GkeClient) CreateCluster(clusterId string) (string, error) {
 		},
 	}
 
-	createCall := projectsZonesClustersService.Create(c.ProjectId, c.Zone, createClusterRequest)
+	createCall := projectsZonesClustersService.Create(c.Project, c.Zone, createClusterRequest)
 	op, err := createCall.Do()
 	if err != nil {
 		return "", err
@@ -137,7 +137,7 @@ func (c *GkeClient) Done(operationId string) error {
 	}
 
 	projectsZonesOperationsService := container.NewProjectsZonesOperationsService(service)
-	projectsZonesOperationsGetCall := projectsZonesOperationsService.Get(c.ProjectId, c.Zone, operationId)
+	projectsZonesOperationsGetCall := projectsZonesOperationsService.Get(c.Project, c.Zone, operationId)
 	projectsZonesOperationsGetCall.Fields("status")
 
 	DoGetCall := func() (*container.Operation, error) {

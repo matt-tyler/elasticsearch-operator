@@ -20,12 +20,12 @@ import (
 )
 
 type Config struct {
-	Build     bool   `mapstructure:"build"`
-	Up        bool   `mapstructure:"up"`
-	Down      bool   `mapstructure:"down"`
-	Test      bool   `mapstructure:"test"`
-	ProjectId string `mapstructure:"projectid"`
-	Zone      string `mapstructure:"zone"`
+	Build   bool   `mapstructure:"build"`
+	Up      bool   `mapstructure:"up"`
+	Down    bool   `mapstructure:"down"`
+	Test    bool   `mapstructure:"test"`
+	Project string `mapstructure:"project"`
+	Zone    string `mapstructure:"zone"`
 }
 
 func Run(config Config, args []string) error {
@@ -34,21 +34,21 @@ func Run(config Config, args []string) error {
 	client := gke.GkeClient{}
 
 	if config.Up || config.Down {
-		if err := gke.NewGkeClient(&client, ctx, config.ProjectId, config.Zone); err != nil {
+		if err := gke.NewGkeClient(&client, ctx, config.Project, config.Zone); err != nil {
 			return err
 		}
+		fmt.Println("Created GKE client")
 	}
 
 	// spin the cluster up
 	if config.Up {
-		fmt.Println("Creating cluster: %v", clusterId)
+		fmt.Printf("Creating cluster: %v\n", clusterId)
 		op, err := client.CreateCluster(clusterId)
 		if err != nil {
 			return err
 		}
-
 		client.Done(op)
-		fmt.Println("Cluster %v created", clusterId)
+		fmt.Printf("Cluster %v created\n", clusterId)
 	}
 
 	if config.Build {
@@ -61,14 +61,14 @@ func Run(config Config, args []string) error {
 
 	// spin the cluster down
 	if config.Down {
-		fmt.Println("Deleting Cluster: %v", clusterId)
+		fmt.Printf("Deleting Cluster: %v\n", clusterId)
 		op, err := client.DeleteCluster(clusterId)
 		if err != nil {
 			return err
 		}
 
 		client.Done(op)
-		fmt.Println("Cluster %v deleted", clusterId)
+		fmt.Printf("Cluster %v deleted\n", clusterId)
 	}
 
 	return nil
