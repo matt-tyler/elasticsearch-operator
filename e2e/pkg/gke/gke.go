@@ -15,8 +15,13 @@ package gke
 
 import (
 	"context"
+	"encoding/base64"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/container/v1"
+	k8s "k8s.io/client-go/kubernetes"
+	rest "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"net/http"
 	"time"
 )
@@ -53,41 +58,47 @@ func (c *GkeClient) DeleteCluster(clusterId string) (string, error) {
 	return op.Name, nil
 }
 
-func GetClusterStatus(client *http.Client, clusterId, projectId, zone string) (*string, error) {
-	service, err := container.New(client)
+func (c *Cluster) Client() (*k8s.Clientset, error) {
+	config, err := clientcmd.BuildConfigFromFlags(c.Endpoint, "")
+	if err != nil {
+		return nil, err
+	}
+
+	config.AuthProvider = &clientcmdapi.AuthProviderConfig{
+		Name: "gcp",
+	}
+
+	cacert, _ := base64.StdEncoding.DecodeString(c.Auth.ClusterCaCertificate)
+
+	config.TLSClientConfig = rest.TLSClientConfig{
+		CAData: cacert,
+	}
+
+	return k8s.NewForConfig(config)
+}
+
+type Cluster struct {
+	Auth     *container.MasterAuth
+	Status   string
+	Endpoint string
+}
+
+func (c *GkeClient) GetCluster(clusterId string) (*Cluster, error) {
+	service, err := container.New(c.client)
 	if err != nil {
 		return nil, err
 	}
 
 	projectsZonesClustersService := container.NewProjectsZonesClustersService(service)
-	projectZonesClustersGetCall := projectsZonesClustersService.Get(projectId, zone, clusterId)
-	projectZonesClustersGetCall.Fields("status")
+	projectZonesClustersGetCall := projectsZonesClustersService.Get(c.Project, c.Zone, clusterId)
+	projectZonesClustersGetCall.Fields("status,endpoint,masterAuth")
 
 	cluster, err := projectZonesClustersGetCall.Do()
 	if err != nil {
 		return nil, err
 	}
 
-	return &(cluster.Status), nil
-}
-
-func ListClusters(client *http.Client, projectId, zone string) (*container.ListClustersResponse, error) {
-	service, err := container.New(client)
-	if err != nil {
-		return nil, err
-	}
-
-	projectsZonesClustersService := container.NewProjectsZonesClustersService(service)
-	projectsZonesClustersListCall := projectsZonesClustersService.List(projectId, zone)
-
-	projectsZonesClustersListCall.Fields("clusters(name,status)")
-
-	listClustersResponse, err := projectsZonesClustersListCall.Do()
-	if err != nil {
-		return nil, err
-	}
-
-	return listClustersResponse, nil
+	return &Cluster{cluster.MasterAuth, cluster.Status, cluster.Endpoint}, nil
 }
 
 func (c *GkeClient) CreateCluster(clusterId string) (string, error) {
