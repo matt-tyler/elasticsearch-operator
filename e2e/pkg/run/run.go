@@ -51,6 +51,13 @@ func Run(config Config, args []string) error {
 		fmt.Printf("Cluster %v created\n", clusterId)
 	}
 
+	//cluster, _ := client.GetCluster(clusterId)
+
+	//kubeClient, err := cluster.Client()
+	//if err != nil {
+	//    fmt.Println(err.Error())
+	//}
+
 	if config.Build {
 		// build the e2e test binary
 	}
