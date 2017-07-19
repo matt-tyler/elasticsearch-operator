@@ -62,6 +62,28 @@ func Run(config Config, args []string) error {
 
 	if config.Build {
 		// build the e2e test binary
+		gopath := os.Getenv("GOPATH")
+
+		wd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+
+		gocmd, err := exec.LookPath("go")
+		if err != nil {
+			return err
+		}
+
+		os.Chdir(gopath + "/src/github.com/matt-tyler/elasticsearch-operator/e2e/pkg/e2e")
+		args := []string{"test", "-c", "-o", gopath + "/bin/e2e.test"}
+		cmd := exec.Command(gocmd, args...)
+		fmt.Println(cmd)
+
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+
+		os.Chdir(wd)
 	}
 
 	if config.Test {
