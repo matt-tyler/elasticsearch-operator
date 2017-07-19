@@ -17,6 +17,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/matt-tyler/elasticsearch-operator/e2e/pkg/gke"
+	"os"
+	"os/exec"
 )
 
 type Config struct {
@@ -64,6 +66,25 @@ func Run(config Config, args []string) error {
 
 	if config.Test {
 		// run the tests
+		ginkgo, err := exec.LookPath("ginkgo")
+		if err != nil {
+			return err
+		}
+
+		testbin, err := exec.LookPath("e2e.test")
+		if err != nil {
+			return err
+		}
+
+		args := []string{testbin}
+		cmd := exec.Command(ginkgo, args...)
+
+		cmd.Stdout = os.Stdin
+		cmd.Stderr = os.Stderr
+
+		if err := cmd.Run(); err != nil {
+			return err
+		}
 	}
 
 	// spin the cluster down
