@@ -1,6 +1,6 @@
 steps:
 - name: 'gcr.io/$PROJECT_ID/cloud-builders/go-elasticsearch-operator'
-  args: ['install', '.']
+  args: ['get', '.']
   env: 
     - 'PROJECT_ROOT=github.com/matt-tyler/elasticsearch-operator'
     - 'CGO_ENABLED=0'
