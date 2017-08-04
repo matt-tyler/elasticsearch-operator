@@ -37,12 +37,21 @@ var RootCmd = &cobra.Command{
 			panic(err)
 		}
 
-		//apiextensionsclientset, err := apiextensionsclient.NewForConfig(clientConfig)
-		//if err != nil {
-		//    panic(err)
-		//}
+		apiextensionsclientset, err := apiextensionsclient.NewForConfig(clientConfig)
+		if err != nil {
+			panic(err)
+		}
 
-		client, scheme, err := client.NewClient(clientConfig)
+		crd, err := CreateCustomResourceDefinition(apiextensionsclientset)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			panic(err)
+		}
+
+		if crd != nil {
+			defer apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(crd.Name, nil)
+		}
+
+		client, scheme, err := NewClient(clientConfig)
 		if err != nil {
 			panic(err)
 		}

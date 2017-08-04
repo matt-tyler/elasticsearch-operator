@@ -20,7 +20,7 @@ type ClusterSpec struct {
 }
 
 type ClusterStatus struct {
-	state ClusterState `json:"state,omitempty"`
+	State ClusterState `json:"state,omitempty"`
 }
 
 type ClusterState string
