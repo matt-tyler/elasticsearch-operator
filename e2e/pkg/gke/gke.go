@@ -113,8 +113,9 @@ func (c *GkeClient) CreateCluster(clusterId string) (string, error) {
 		Cluster: &container.Cluster{
 			Name:                  clusterId,
 			Description:           "A cluster for e2e testing of elasticsearch-operator",
-			InitialClusterVersion: "1.6.4",
+			InitialClusterVersion: "1.7.2",
 			InitialNodeCount:      3,
+			EnableKubernetesAlpha: true,
 			NodeConfig: &container.NodeConfig{
 				DiskSizeGb:  40,
 				ImageType:   "COS",
