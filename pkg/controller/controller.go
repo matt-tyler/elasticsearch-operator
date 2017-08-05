@@ -47,7 +47,7 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	_, err := c.watch(ctx)
 	if err != nil {
-		logger.Errorf("Failed to register watch for Example resource: %v", err)
+		logger.Errorf("Failed to register watch for cluster resource: %v", err)
 		return err
 	}
 
@@ -58,7 +58,33 @@ func (c *Controller) Run(ctx context.Context) error {
 func (c *Controller) onAdd(obj interface{}) {
 	logger := log.NewLogger()
 	cluster := obj.(spec.Cluster)
-	logger.Infof("Added: %v", cluster)
+
+	logger.Debugf("Adding cluster: %v", cluster)
+
+	copy := cluster.DeepCopy()
+	if copy == nil {
+		logger.Errorf("Failed creating a deep copy of cluster: %v", cluster)
+		return
+	}
+
+	copy.Status = spec.ClusterStatus{
+		State: spec.ClusterStateCreated,
+	}
+
+	err := c.client.Put().
+		Name(cluster.ObjectMeta.Name).
+		Namespace(cluster.ObjectMeta.Namespace).
+		Resource(spec.ResourcePlural).
+		Body(copy).
+		Do().
+		Error()
+
+	if err != nil {
+		logger.Errorf("Failed to update status: %v", err)
+		return
+	}
+
+	logger.Infof("Added cluster: %v", cluster)
 }
 
 func (c *Controller) onUpdate(oldObj, newObj interface{}) {
@@ -71,5 +97,5 @@ func (c *Controller) onUpdate(oldObj, newObj interface{}) {
 func (c *Controller) onDelete(obj interface{}) {
 	logger := log.NewLogger()
 	cluster := obj.(spec.Cluster)
-	logger.Infof("Added: %v", cluster)
+	logger.Infof("Deleted: %v", cluster)
 }
