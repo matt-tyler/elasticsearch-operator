@@ -2,7 +2,7 @@ package controller
 
 import (
 	"context"
-	"fmt"
+	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/spec"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -42,11 +42,12 @@ func (c *Controller) watch(ctx context.Context) (cache.Controller, error) {
 }
 
 func (c *Controller) Run(ctx context.Context) error {
-	fmt.Println("Begin watching resources")
+	logger := log.NewLogger()
+	logger.Infof("Begin watching resources")
 
 	_, err := c.watch(ctx)
 	if err != nil {
-		fmt.Printf("Failed to register watch for Example resource: %v\n", err)
+		logger.Errorf("Failed to register watch for Example resource: %v", err)
 		return err
 	}
 
@@ -55,13 +56,20 @@ func (c *Controller) Run(ctx context.Context) error {
 }
 
 func (c *Controller) onAdd(obj interface{}) {
-
+	logger := log.NewLogger()
+	cluster := obj.(spec.Cluster)
+	logger.Infof("Added: %v", cluster)
 }
 
 func (c *Controller) onUpdate(oldObj, newObj interface{}) {
-
+	logger := log.NewLogger()
+	oldCluster := oldObj.(spec.Cluster)
+	newCluster := newObj.(spec.Cluster)
+	logger.Infof("Updated: %v to %v", oldCluster, newCluster)
 }
 
 func (c *Controller) onDelete(obj interface{}) {
-
+	logger := log.NewLogger()
+	cluster := obj.(spec.Cluster)
+	logger.Infof("Added: %v", cluster)
 }
