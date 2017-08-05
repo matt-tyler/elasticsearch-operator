@@ -5,6 +5,7 @@ import (
 	"fmt"
 	. "github.com/matt-tyler/elasticsearch-operator/pkg/client"
 	. "github.com/matt-tyler/elasticsearch-operator/pkg/controller"
+	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -28,6 +29,9 @@ var RootCmd = &cobra.Command{
 	Use:   "elasticsearch-operator",
 	Short: "An elasticsearch operator for Kubernetes",
 	Run: func(cmd *cobra.Command, args []string) {
+		logger := log.NewLogger()
+		defer logger.Infof("Elasticsearch Operator has stopped")
+
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGTERM)
 
@@ -35,17 +39,17 @@ var RootCmd = &cobra.Command{
 
 		clientConfig, err := buildConfig(kubeconfig)
 		if err != nil {
-			panic(err)
+			logger.Panicf("%v", err)
 		}
 
 		apiextensionsclientset, err := apiextensionsclient.NewForConfig(clientConfig)
 		if err != nil {
-			panic(err)
+			logger.Panicf("%v", err)
 		}
 
 		crd, err := CreateCustomResourceDefinition(apiextensionsclientset)
 		if err != nil && !apierrors.IsAlreadyExists(err) {
-			panic(err)
+			logger.Panicf("%v", err)
 		}
 
 		if crd != nil {
@@ -54,7 +58,7 @@ var RootCmd = &cobra.Command{
 
 		client, scheme, err := NewClient(clientConfig)
 		if err != nil {
-			panic(err)
+			logger.Panicf("%v", err)
 		}
 
 		controller := NewController(client, scheme)
@@ -65,6 +69,7 @@ var RootCmd = &cobra.Command{
 
 		select {
 		case <-sigs:
+			logger.Infof("Elasticsearch Operator is stopping...")
 			return
 		}
 	},
