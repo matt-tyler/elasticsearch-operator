@@ -33,7 +33,7 @@ var RootCmd = &cobra.Command{
 		defer logger.Infof("Elasticsearch Operator has stopped")
 
 		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, syscall.SIGTERM)
+		signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 
 		kubeconfig := viper.GetString("kubeconfig")
 
