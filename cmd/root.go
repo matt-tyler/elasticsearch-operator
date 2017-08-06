@@ -53,7 +53,14 @@ var RootCmd = &cobra.Command{
 		}
 
 		if crd != nil {
-			defer apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(crd.Name, nil)
+			defer func() {
+				logger.Infof("Removing custom resource definition from cluster...")
+				if err := apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(crd.Name, nil); err != nil {
+					logger.Errorf("Failed to remove custom resource definition")
+				} else {
+					logger.Infof("Custom resource definition removed.")
+				}
+			}()
 		}
 
 		client, scheme, err := NewClient(clientConfig)

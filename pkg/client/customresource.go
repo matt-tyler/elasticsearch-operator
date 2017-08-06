@@ -1,7 +1,8 @@
 package client
 
 import (
-	"fmt"
+	"encoding/json"
+	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	spec "github.com/matt-tyler/elasticsearch-operator/pkg/spec"
 	apiv1 "k8s.io/api/core/v1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
@@ -14,9 +15,19 @@ import (
 	"time"
 )
 
+func PrettyJson(v interface{}) string {
+	logger := log.NewLogger()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		logger.Panicf("%v", err)
+	}
+	return string(b)
+}
+
 const crdName = spec.ResourcePlural + "." + spec.GroupName
 
 func CreateCustomResourceDefinition(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+	logger := log.NewLogger()
 	crd := &apiextensionsv1beta1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: crdName,
@@ -32,8 +43,11 @@ func CreateCustomResourceDefinition(clientset apiextensionsclient.Interface) (*a
 		},
 	}
 
+	logger.Debugf("Creating custom resource:\n%v", PrettyJson(crd))
+
 	_, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(crd)
 	if err != nil {
+		logger.Debugf("Failed to create custom resource")
 		return nil, err
 	}
 
@@ -50,7 +64,7 @@ func CreateCustomResourceDefinition(clientset apiextensionsclient.Interface) (*a
 				}
 			case apiextensionsv1beta1.NamesAccepted:
 				if cond.Status == apiextensionsv1beta1.ConditionFalse {
-					fmt.Printf("Name conflict: %v\n", cond.Reason)
+					logger.Errorf("Name conflict: %v\n", cond.Reason)
 				}
 			}
 		}
