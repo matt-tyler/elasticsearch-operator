@@ -32,6 +32,7 @@ func NewLogger() Logger {
 		if l, err := config.Build(); err != nil {
 			panic("Could not create logger")
 		} else {
+			zap.RedirectStdLog(l)
 			logger = l.Sugar()
 		}
 	})
