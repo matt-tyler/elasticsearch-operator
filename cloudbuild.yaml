@@ -1,5 +1,5 @@
 steps:
-  - name: 'gcr.io/$PROJECT_ID/cloud-builders/go-elasticsearch-operator:latest'
+- name: 'gcr.io/$PROJECT_ID/cloud-builders/go-elasticsearch-operator:latest'
   args: ['get', 'github.com/matt-tyler/elasticsearch-operator']
   env: 
     - 'GOPATH=/workspace/gopath'
