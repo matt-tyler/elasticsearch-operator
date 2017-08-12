@@ -6,10 +6,3 @@ ENV GOPATH=/workspace
 
 RUN go.ash get -u github.com/golang/dep/cmd/dep
 
-RUN go.ash get -d github.com/matt-tyler/elasticsearch-operator
-
-WORKDIR /workspace/src/github.com/matt-tyler/elasticsearch-operator
-
-RUN /workspace/bin/dep ensure
-
-RUN find -maxdepth 1 ! -name vendor ! -name . -exec rm -r {} \;
