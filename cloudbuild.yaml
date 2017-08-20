@@ -2,18 +2,7 @@ steps:
 - name: 'gcr.io/$PROJECT_ID/cloud-builders/go-elasticsearch-operator:latest'
   args: ['get', '-d', 'github.com/matt-tyler/elasticsearch-operator']
   env: 
-    - 'GOPATH=/workspace'
-    - 'CGO_ENABLED=0'
-- name: 'gcr.io/$PROJECT_ID/cloud-builders/go-elasticsearch-operator:latest'
-  entrypoint: '/workspace/bin/dep'
-  args: ['-ensure']
-  env: 
-    - 'GOPATH=/workspace'
-    - 'CGO_ENABLED=0'
-- name: 'gcr.io/$PROJECT_ID/cloud-builders/go-elasticsearch-operator:latest'
-  args: ['install']
-  env: 
-    - 'GOPATH=/workspace'
+    - 'PROJECT_ROOT=github.com/matt-tyler/elasticsearch-operator'
     - 'CGO_ENABLED=0'
 - name: 'gcr.io/cloud-builders/docker'
   args: 
