@@ -1,8 +1,13 @@
 FROM gcr.io/cloud-builders/go:alpine
 
-RUN mkdir /workspace
+RUN mkdir -p /scratch/src/github.com/matt-tyler && mkdir /workspace
 
-ENV GOPATH=/workspace/gopath
+RUN GOPATH=/scratch go get -u github.com/golang/dep/cmd/dep
 
-RUN go.ash get -u github.com/golang/dep/cmd/dep
+WORKDIR /scratch/src/github.com/matt-tyler
+
+RUN git clone https://github.com/matt-tyler/elasticsearch-operator \ 
+ && cd elasticsearch-operator \
+ && GOPATH=/scratch /scratch/bin/dep ensure \
+ && mv /scratch/src/github.com/matt-tyler/elasticsearch-operator/vendor /workspace/vendor
 
