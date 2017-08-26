@@ -1,5 +1,5 @@
 FROM scratch
 
-COPY /workspace/gopath/bin/elasticsearch-operator /elasticsearch-operator
+COPY gopath/bin/elasticsearch-operator /elasticsearch-operator
 
 ENTRYPOINT ["/elasticsearch-operator"]
