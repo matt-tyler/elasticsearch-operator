@@ -16,5 +16,4 @@
 elasticsearch-operator
 
 build/
-vendor/
 e2e/e2e
