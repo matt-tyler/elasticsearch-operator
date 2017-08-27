@@ -46,6 +46,7 @@ func buildConfig(kubeconfig string) (*rest.Config, error) {
 }
 
 var deployment *v1beta1.Deployment
+var events <-chan watch.Event
 
 var _ = BeforeSuite(func() {
 	config, err := buildConfig(Kubeconfig)
@@ -57,6 +58,8 @@ var _ = BeforeSuite(func() {
 	w, err := apiextensionsclientset.ApiextensionsV1beta1().
 		CustomResourceDefinitions().Watch(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
+
+	events = w.ResultChan()
 
 	clientset, err := appsv1beta1.NewForConfig(config)
 	Expect(err).NotTo(HaveOccurred())
@@ -99,9 +102,9 @@ spec:
 	Expect(err).NotTo(HaveOccurred())
 
 	select {
-	case event := <-w.ResultChan():
-		Expect(event.Type).To(Equal(watch.Added))
+	case event := <-events:
 		_ = event.Object.(*apiextensionsv1beta1.CustomResourceDefinition)
+		Expect(event.Type).To(Equal(watch.Added))
 	case <-time.After(time.Second * 10):
 		Fail("Creating custom resource definition exceeded time out.")
 	}
@@ -109,13 +112,6 @@ spec:
 
 var _ = AfterSuite(func() {
 	config, err := buildConfig(Kubeconfig)
-	Expect(err).NotTo(HaveOccurred())
-
-	apiextensionsclientset, err := apiextensionsclient.NewForConfig(config)
-	Expect(err).NotTo(HaveOccurred())
-
-	w, err := apiextensionsclientset.ApiextensionsV1beta1().
-		CustomResourceDefinitions().Watch(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	clientset, err := appsv1beta1.NewForConfig(config)
@@ -129,11 +125,18 @@ var _ = AfterSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	select {
-	case event := <-w.ResultChan():
-		Expect(event.Type).To(Equal(watch.Deleted))
-	case <-time.After(time.Second * 5):
-		Fail("Deleting custom resource definition exceeded time out.")
+	timeout := time.After(time.Second * 10)
+
+	for {
+		select {
+		case <-timeout:
+			Fail("Deleting custom resource definition exceeded time out.")
+		default:
+			event := <-events
+			if event.Type == watch.Deleted {
+				return
+			}
+		}
 	}
 })
 
