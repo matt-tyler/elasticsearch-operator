@@ -7,13 +7,14 @@ import (
 	_ "github.com/matt-tyler/elasticsearch-operator/e2e/pkg/e2e/example"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"k8s.io/api/apps/v1beta2"
+	"k8s.io/api/apps/v1beta1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apimachinery/pkg/watch"
-	appsv1beta2 "k8s.io/client-go/kubernetes/typed/apps/v1beta2"
+	appsv1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"testing"
@@ -44,7 +45,7 @@ func buildConfig(kubeconfig string) (*rest.Config, error) {
 	return rest.InClusterConfig()
 }
 
-var deployment v1beta2.Deployment
+var deployment *v1beta1.Deployment
 
 var _ = BeforeSuite(func() {
 	config, err := buildConfig(Kubeconfig)
@@ -54,16 +55,16 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	w, err := apiextensionsclientset.ApiextensionsV1beta1().
-		CustomResourceDefinitions().Watch(v1.ListOptions{})
+		CustomResourceDefinitions().Watch(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	clientset, err := appsv1beta2.NewForConfig(config)
+	clientset, err := appsv1beta1.NewForConfig(config)
 	Expect(err).NotTo(HaveOccurred())
 
-	deploymentClient := clientset.Deployments(v1.NamespaceDefault)
+	deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 
 	deploymentTemplate := `
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
   name: elasticsearch-operator
@@ -75,8 +76,8 @@ spec:
         app: elasticsearch-operator
     spec:
       containers:
-	  - name: elasticsearch-operator
-	    image: {{.Image}}
+      - name: elasticsearch-operator
+        image: {{.Image}}
 `
 
 	buf := &bytes.Buffer{}
@@ -94,14 +95,14 @@ spec:
 	err = json.Unmarshal(deploymentJSON, &deployment)
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = deploymentClient.Create(&deployment)
+	deployment, err = deploymentClient.Create(deployment)
 	Expect(err).NotTo(HaveOccurred())
 
 	select {
 	case event := <-w.ResultChan():
 		Expect(event.Type).To(Equal(watch.Added))
 		_ = event.Object.(*apiextensionsv1beta1.CustomResourceDefinition)
-	case <-time.After(time.Second * 5):
+	case <-time.After(time.Second * 10):
 		Fail("Creating custom resource definition exceeded time out.")
 	}
 })
@@ -114,22 +115,25 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	w, err := apiextensionsclientset.ApiextensionsV1beta1().
-		CustomResourceDefinitions().Watch(v1.ListOptions{})
+		CustomResourceDefinitions().Watch(metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
-	clientset, err := appsv1beta2.NewForConfig(config)
+	clientset, err := appsv1beta1.NewForConfig(config)
 	Expect(err).NotTo(HaveOccurred())
 
-	deploymentClient := clientset.Deployments(v1.NamespaceDefault)
+	deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 
-	err = deploymentClient.Delete(deployment.Name, nil)
+	deletePolicy := metav1.DeletePropagationForeground
+	err = deploymentClient.Delete(deployment.Name, &metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	})
 	Expect(err).NotTo(HaveOccurred())
 
 	select {
 	case event := <-w.ResultChan():
 		Expect(event.Type).To(Equal(watch.Deleted))
 	case <-time.After(time.Second * 5):
-		Fail("Creating custom resource definition exceeded time out.")
+		Fail("Deleting custom resource definition exceeded time out.")
 	}
 })
 
