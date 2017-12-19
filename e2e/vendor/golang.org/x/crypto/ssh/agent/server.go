@@ -106,7 +106,7 @@ func (s *server) processRequest(data []byte) (interface{}, error) {
 		return nil, s.agent.Lock(req.Passphrase)
 
 	case agentUnlock:
-		var req agentUnlockMsg
+		var req agentLockMsg
 		if err := ssh.Unmarshal(data, &req); err != nil {
 			return nil, err
 		}

@@ -56,7 +56,7 @@ func WithCredentialsFile(filename string) ClientOption {
 // WithServiceAccountFile returns a ClientOption that uses a Google service
 // account credentials file to authenticate.
 //
-// Deprecated: Use WithCredentialsFile instead.
+// Deprecated: Use WithCredentialsJSONFile instead.
 func WithServiceAccountFile(filename string) ClientOption {
 	return WithCredentialsFile(filename)
 }

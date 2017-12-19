@@ -35,8 +35,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/googleapis/gnostic/plugins/gnostic-analyze/statistics"
 
-	openapi2 "github.com/googleapis/gnostic/OpenAPIv2"
-	openapi3 "github.com/googleapis/gnostic/OpenAPIv3"
+	openapi "github.com/googleapis/gnostic/OpenAPIv2"
 	plugins "github.com/googleapis/gnostic/plugins"
 )
 
@@ -55,7 +54,7 @@ func sendAndExit(response *plugins.Response) {
 	os.Exit(0)
 }
 
-func xmain() {
+func main() {
 	// Initialize the response.
 	response := &plugins.Response{}
 
@@ -80,7 +79,7 @@ func xmain() {
 	}
 
 	// Unmarshal the description.
-	document := &openapi2.Document{}
+	document := &openapi.Document{}
 	err = proto.Unmarshal(wrapper.Value, document)
 	sendAndExitIfError(err, response)
 
@@ -99,36 +98,4 @@ func xmain() {
 
 	// Send the final results. Success!
 	sendAndExit(response)
-}
-
-// This is the main function for the plugin.
-func main() {
-	env, err := plugins.NewEnvironment()
-	env.RespondAndExitIfError(err)
-
-	var stats *statistics.DocumentStatistics
-	if documentv2, ok := env.Document.(*openapi2.Document); ok {
-		// Analyze the API document.
-		stats = statistics.NewDocumentStatistics(env.DocumentName, documentv2)
-	}
-
-	if documentv3, ok := env.Document.(*openapi3.Document); ok {
-		// Analyze the API document.
-		stats = statistics.NewDocumentStatisticsV3(env.DocumentName, documentv3)
-	}
-
-	if stats != nil {
-		// Return the analysis results with an appropriate filename.
-		// Results are in files named "summary.json" in the same relative
-		// locations as the description source files.
-		file := &plugins.File{}
-		file.Name = strings.Replace(stats.Name, path.Base(stats.Name), "summary.json", -1)
-		file.Data, err = json.MarshalIndent(stats, "", "  ")
-		file.Data = append(file.Data, []byte("\n")...)
-		env.RespondAndExitIfError(err)
-		env.Response.Files = append(env.Response.Files, file)
-	}
-
-
-	env.RespondAndExit()
 }

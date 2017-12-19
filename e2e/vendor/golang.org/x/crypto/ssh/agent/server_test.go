@@ -43,7 +43,7 @@ func TestSetupForwardAgent(t *testing.T) {
 	defer a.Close()
 	defer b.Close()
 
-	_, socket, cleanup := startOpenSSHAgent(t)
+	_, socket, cleanup := startAgent(t)
 	defer cleanup()
 
 	serverConf := ssh.ServerConfig{

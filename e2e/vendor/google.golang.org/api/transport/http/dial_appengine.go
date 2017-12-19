@@ -14,7 +14,7 @@
 
 // +build appengine
 
-package http
+package transport
 
 import (
 	"net/http"
