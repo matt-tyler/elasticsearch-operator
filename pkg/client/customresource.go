@@ -2,6 +2,9 @@ package client
 
 import (
 	"encoding/json"
+	"reflect"
+	"time"
+
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	spec "github.com/matt-tyler/elasticsearch-operator/pkg/spec"
 	apiv1 "k8s.io/api/core/v1"
@@ -11,8 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
-	"reflect"
-	"time"
 )
 
 func PrettyJson(v interface{}) string {

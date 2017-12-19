@@ -3,6 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
 	. "github.com/matt-tyler/elasticsearch-operator/pkg/client"
 	. "github.com/matt-tyler/elasticsearch-operator/pkg/controller"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
@@ -13,9 +17,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 func buildConfig(kubeconfig string) (*rest.Config, error) {

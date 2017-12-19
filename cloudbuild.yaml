@@ -11,3 +11,4 @@ steps:
     - '--file=Dockerfile.cloudbuild'
     - '.'
 images: ['gcr.io/$PROJECT_ID/elasticsearch-operator']
+
