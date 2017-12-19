@@ -77,7 +77,6 @@ func Run(config Config, args []string) error {
 		os.Chdir(gopath + "/src/github.com/matt-tyler/elasticsearch-operator/e2e/pkg/e2e")
 		args := []string{"test", "-c", "-o", gopath + "/bin/e2e.test"}
 		cmd := exec.Command(gocmd, args...)
-		fmt.Println(cmd)
 
 		if err := cmd.Run(); err != nil {
 			return err
@@ -98,8 +97,7 @@ func Run(config Config, args []string) error {
 			return err
 		}
 
-		args := []string{testbin}
-		cmd := exec.Command(ginkgo, args...)
+		cmd := exec.Command(ginkgo, append([]string{testbin, "--"}, args...)...)
 
 		cmd.Stdout = os.Stdin
 		cmd.Stderr = os.Stderr
