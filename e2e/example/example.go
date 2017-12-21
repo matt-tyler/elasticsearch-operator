@@ -1,4 +1,4 @@
-package example
+package suite
 
 import (
 	. "github.com/onsi/ginkgo"
@@ -19,7 +19,7 @@ var _ = Describe("Example", func() {
 	Describe("Law of mathematics applies in Australia", func() {
 		Context("When adding two numbers", func() {
 			It("should be equal to their sum", func() {
-				Expect(a + b).To(Equal(8))
+				Expect(a + b).To(Equal(7))
 			})
 		})
 

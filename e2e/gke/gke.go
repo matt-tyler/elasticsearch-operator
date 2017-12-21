@@ -16,14 +16,14 @@ package gke
 import (
 	"context"
 	"encoding/base64"
+	"net/http"
+	"time"
+
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/container/v1"
-	k8s "k8s.io/client-go/kubernetes"
 	rest "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"net/http"
-	"time"
 )
 
 type GkeClient struct {
@@ -58,7 +58,7 @@ func (c *GkeClient) DeleteCluster(clusterId string) (string, error) {
 	return op.Name, nil
 }
 
-func (c *Cluster) Client() (*k8s.Clientset, error) {
+func (c *Cluster) Config() (*rest.Config, error) {
 	config, err := clientcmd.BuildConfigFromFlags(c.Endpoint, "")
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (c *Cluster) Client() (*k8s.Clientset, error) {
 		CAData: cacert,
 	}
 
-	return k8s.NewForConfig(config)
+	return config, nil
 }
 
 type Cluster struct {
