@@ -15,13 +15,17 @@ package e2e
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/matt-tyler/elasticsearch-operator/e2e/suite"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/matt-tyler/elasticsearch-operator/e2e/gke"
 	. "github.com/onsi/ginkgo"
@@ -34,12 +38,14 @@ var Kubeconfig string
 var Image string
 var Up bool
 var Down bool
+var Test bool
 
 func init() {
 	flag.StringVar(&Kubeconfig, "kubeconfig", "", "Location of kubeconfig")
 	flag.StringVar(&Image, "image", "gcr.io/schnauzer-163208/elasticsearch-operator:latest", "image under test")
 	flag.BoolVar(&Up, "up", false, "")
 	flag.BoolVar(&Down, "down", false, "")
+	flag.BoolVar(&Test, "test", false, "")
 }
 
 func TestE2E(t *testing.T) {
@@ -72,10 +78,17 @@ func RunE2ETests(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
+		configAccess := clientcmd.NewDefaultClientConfigLoadingRules()
+		clientcmd.ModifyConfig(configAccess, *(clientConfig(cluster)), false)
 	}
 
 	if Down {
 		defer deleteCluster(client, clusterID)
+	}
+
+	if !Test {
+		return
 	}
 
 	if config == nil {
@@ -120,4 +133,46 @@ func createCluster(client gke.GkeClient, clusterID string) {
 	}
 	client.Done(op)
 	fmt.Printf("Cluster %v created\n", clusterID)
+}
+
+func clientConfig(gc *gke.Cluster) *clientcmdapi.Config {
+	gcloudPath, err := exec.LookPath("gcloud")
+	if err != nil {
+		panic(err)
+	}
+
+	config := clientcmdapi.NewConfig()
+
+	cluster := clientcmdapi.NewCluster()
+
+	caCert, err := base64.StdEncoding.DecodeString(gc.Auth.ClusterCaCertificate)
+	if err != nil {
+		panic(err)
+	}
+
+	cluster.CertificateAuthorityData = []byte(caCert)
+	cluster.Server = fmt.Sprintf("https://%v", gc.Endpoint)
+
+	context := clientcmdapi.NewContext()
+	context.Cluster = "e2e-test-cluster"
+	context.AuthInfo = "e2e-test-cluster-user"
+
+	authInfo := clientcmdapi.NewAuthInfo()
+	authInfo.AuthProvider = &clientcmdapi.AuthProviderConfig{
+		Name: "gcp",
+		Config: map[string]string{
+			"cmd-args":   "config config-helper --format=json",
+			"cmd-path":   gcloudPath,
+			"expiry-key": "{.credential.token_expiry}",
+			"token-key":  "{.credential.access_token}",
+		},
+	}
+
+	config.Clusters["e2e-test-cluster"] = cluster
+	config.Contexts["e2e-test-cluster-user"] = context
+	config.AuthInfos["e2e-test-cluster-user"] = authInfo
+
+	config.CurrentContext = "e2e-test-cluster-user"
+
+	return config
 }
