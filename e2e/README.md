@@ -1,19 +1,29 @@
 # Example Run #
 
+## Prerequisites
+
+- gcloud installed and configured in PATH
+- ginkgo installed and configured in PATH
+
 ```bash
+# Build the test binary by running the following in the e2e directory.
+# The binary will be called e2e.test.
+ginkgo build
+
 # Create a cluster in the target account
-env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e --up
-
-# Get credentials for cluster that was just created
-gcloud container clusters get-credentials e2e-test-cluster
-
-# You may need to set your context if you have multiple clusters configured in kubeconfig
-kubectl config set-cluster e2e-test-cluster
+# This will automatically retrieve the credentials for the cluster
+# and append them to ~/.kube/config. This will also set your context
+# to the e2e-test-cluster
+env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e.test --up
 
 # Run the integration tests against cluster that was created
 # Results will be printed to stdout
-./e2e --test -- --kubeconfig ~/.kube/config
+./e2e.test --kubeconfig ~/.kube/config --test
 
 # Tear down the cluster
-env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e --down
+env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e.test --down
+
+# You can also do a run like this
+# The order of the flags does not matter
+env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e.test --up --test --down
 ```
