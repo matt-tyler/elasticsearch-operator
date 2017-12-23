@@ -80,7 +80,9 @@ func RunE2ETests(t *testing.T) {
 		}
 
 		configAccess := clientcmd.NewDefaultClientConfigLoadingRules()
-		clientcmd.ModifyConfig(configAccess, *(clientConfig(cluster)), false)
+		if err := clientcmd.ModifyConfig(configAccess, *(clientConfig(cluster)), false); err != nil {
+			panic(err)
+		}
 	}
 
 	if Down {
@@ -109,10 +111,19 @@ func RunE2ETests(t *testing.T) {
 }
 
 func buildConfig(kubeconfig string) (*rest.Config, error) {
+	// If kubeconfig flag was passed in, we try this first
 	if kubeconfig != "" {
 		return clientcmd.BuildConfigFromFlags("", kubeconfig)
 	}
-	return rest.InClusterConfig()
+
+	// Otherwise, see if we are running inside a kubernetes cluster
+	if config, err := rest.InClusterConfig(); err == nil {
+		return config, nil
+	}
+
+	// else try running with the from the default kubeconfig location
+	c := clientcmd.NewDefaultClientConfigLoadingRules().DefaultClientConfig
+	return c.ClientConfig()
 }
 
 func deleteCluster(client gke.GkeClient, clusterID string) {

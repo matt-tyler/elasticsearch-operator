@@ -26,4 +26,12 @@ env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e.test --down
 # You can also do a run like this
 # The order of the flags does not matter
 env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e.test --up --test --down
+
+# You can also target an existing cluster with a kubeconfig file
+# Likewise, if you omit the kubeconfig flag it will attempt to
+# get credentials from the environment eg; InClusterConfig.
+# If that fails it will fall back to check for a default config
+# eg; usually ~/.kube/config
+env PROJECT=<PROJECT> ZONE=<ZONE> ./e2e.test --test --kubeconfig <PATH_TO_KUBECONFIG>
+
 ```
