@@ -101,7 +101,10 @@ func RunE2ETests(t *testing.T) {
 		}
 	}
 
-	suite.Setup(config, Image)
+	err := suite.Setup(config, Image)
+	if err != nil {
+		panic(err)
+	}
 
 	RegisterFailHandler(Fail)
 

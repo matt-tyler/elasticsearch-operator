@@ -2,7 +2,9 @@ package suite
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"time"
 
@@ -13,22 +15,16 @@ import (
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apimachinery/pkg/watch"
 	appsv1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 )
 
-func buildConfig(kubeconfig string) (*rest.Config, error) {
-	if kubeconfig != "" {
-		return clientcmd.BuildConfigFromFlags("", kubeconfig)
-	}
-	return rest.InClusterConfig()
-}
-
-var deployment *v1beta1.Deployment
-var events <-chan watch.Event
+var config *rest.Config
 
 type Params struct {
 	Image string
@@ -52,17 +48,57 @@ spec:
 `
 
 // Setup registers the custom resource definition/s
-func Setup(config *rest.Config, image string) {
+func Setup(c *rest.Config, image string) error {
+
+	config = c
+
+	// TODO: Use CopyConfig when bumping client-go to >= 4.0
+
+	apiextensionsclientset := apiextensionsclient.NewForConfigOrDie(CopyConfig(config))
+
+	queue := workqueue.New()
+
+	informer := cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return apiextensionsclientset.ApiextensionsV1beta1().
+					CustomResourceDefinitions().List(metav1.ListOptions{})
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return apiextensionsclientset.ApiextensionsV1beta1().
+					CustomResourceDefinitions().Watch(metav1.ListOptions{})
+			},
+		},
+		&apiextensionsv1beta1.CustomResourceDefinition{},
+		0,
+		cache.Indexers{},
+	)
+
+	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
+				queue.Add(key)
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			if key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj); err == nil {
+				queue.Add(key)
+			}
+		},
+	})
+
+	ctx := context.Background()
+
+	go informer.Run(ctx.Done())
+
+	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+		return errors.New("Failed waiting for cache sync")
+	}
+
+	var deployment *v1beta1.Deployment
+
 	BeforeSuite(func() {
-		apiextensionsclientset := apiextensionsclient.NewForConfigOrDie(config)
-
-		w, err := apiextensionsclientset.ApiextensionsV1beta1().
-			CustomResourceDefinitions().Watch(metav1.ListOptions{})
-		Expect(err).NotTo(HaveOccurred())
-
-		events = w.ResultChan()
-
-		clientset := appsv1beta1.NewForConfigOrDie(config)
+		clientset := appsv1beta1.NewForConfigOrDie(CopyConfig(config))
 
 		deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 
@@ -72,7 +108,7 @@ func Setup(config *rest.Config, image string) {
 		}
 
 		tmpl := template.Must(template.New("").Parse(deploymentTemplate))
-		err = tmpl.Execute(buf, p)
+		err := tmpl.Execute(buf, p)
 		Expect(err).NotTo(HaveOccurred())
 
 		deploymentJSON, err := yaml.ToJSON(buf.Bytes())
@@ -84,17 +120,30 @@ func Setup(config *rest.Config, image string) {
 		deployment, err = deploymentClient.Create(deployment)
 		Expect(err).NotTo(HaveOccurred())
 
-		select {
-		case event := <-events:
-			_ = event.Object.(*apiextensionsv1beta1.CustomResourceDefinition)
-			Expect(event.Type).To(Equal(watch.Added))
-		case <-time.After(time.Second * 10):
-			Fail("Creating custom resource definition exceeded time out.")
+		timeout := time.After(time.Second * 10)
+
+		for {
+			select {
+			case <-timeout:
+				Fail("Creating custom resource definition exceeded timeout")
+			default:
+				key, _ := queue.Get()
+				defer queue.Done(key)
+
+				_, exists, err := informer.GetIndexer().GetByKey(key.(string))
+				if err != nil {
+					Fail(err.Error())
+				}
+
+				if exists {
+					return
+				}
+			}
 		}
 	})
 
 	AfterSuite(func() {
-		clientset := appsv1beta1.NewForConfigOrDie(config)
+		clientset := appsv1beta1.NewForConfigOrDie(CopyConfig(config))
 
 		deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 
@@ -105,17 +154,62 @@ func Setup(config *rest.Config, image string) {
 		Expect(err).NotTo(HaveOccurred())
 
 		timeout := time.After(time.Second * 10)
-
 		for {
 			select {
 			case <-timeout:
 				Fail("Deleting custom resource definition exceeded time out.")
 			default:
-				event := <-events
-				if event.Type == watch.Deleted {
+				key, _ := queue.Get()
+				defer queue.Done(key)
+
+				_, exists, err := informer.GetIndexer().GetByKey(key.(string))
+				if err != nil {
+					Fail(err.Error())
+				}
+
+				if !exists {
+					queue.ShutDown()
 					return
 				}
 			}
 		}
 	})
+
+	return nil
+}
+
+func CopyConfig(config *rest.Config) *rest.Config {
+	return &rest.Config{
+		Host:          config.Host,
+		APIPath:       config.APIPath,
+		Prefix:        config.Prefix,
+		ContentConfig: config.ContentConfig,
+		Username:      config.Username,
+		Password:      config.Password,
+		BearerToken:   config.BearerToken,
+		Impersonate: rest.ImpersonationConfig{
+			Groups:   config.Impersonate.Groups,
+			Extra:    config.Impersonate.Extra,
+			UserName: config.Impersonate.UserName,
+		},
+		AuthProvider:        config.AuthProvider,
+		AuthConfigPersister: config.AuthConfigPersister,
+		TLSClientConfig: rest.TLSClientConfig{
+			Insecure:   config.TLSClientConfig.Insecure,
+			ServerName: config.TLSClientConfig.ServerName,
+			CertFile:   config.TLSClientConfig.CertFile,
+			KeyFile:    config.TLSClientConfig.KeyFile,
+			CAFile:     config.TLSClientConfig.CAFile,
+			CertData:   config.TLSClientConfig.CertData,
+			KeyData:    config.TLSClientConfig.KeyData,
+			CAData:     config.TLSClientConfig.CAData,
+		},
+		UserAgent:     config.UserAgent,
+		Transport:     config.Transport,
+		WrapTransport: config.WrapTransport,
+		QPS:           config.QPS,
+		Burst:         config.Burst,
+		RateLimiter:   config.RateLimiter,
+		Timeout:       config.Timeout,
+	}
 }
