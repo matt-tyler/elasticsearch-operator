@@ -87,11 +87,12 @@ func Setup(c *rest.Config, image string) error {
 		},
 	})
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	go informer.Run(ctx.Done())
 
 	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+		cancel()
 		return errors.New("Failed waiting for cache sync")
 	}
 
@@ -168,6 +169,7 @@ func Setup(c *rest.Config, image string) error {
 				}
 
 				if !exists {
+					cancel()
 					queue.ShutDown()
 					return
 				}
