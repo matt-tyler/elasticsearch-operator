@@ -11,14 +11,14 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/api/apps/v1beta1"
+	"k8s.io/api/apps/v1beta2"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/apimachinery/pkg/watch"
-	appsv1beta1 "k8s.io/client-go/kubernetes/typed/apps/v1beta1"
+	appsv1beta2 "k8s.io/client-go/kubernetes/typed/apps/v1beta2"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -37,11 +37,15 @@ metadata:
   name: elasticsearch-operator
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch-operator  
   template:
     metadata:
       labels:
         app: elasticsearch-operator
     spec:
+      serviceAccountName: "default"
       containers:
       - name: elasticsearch-operator
         image: {{.Image}}
@@ -96,10 +100,10 @@ func Setup(c *rest.Config, image string) error {
 		return errors.New("Failed waiting for cache sync")
 	}
 
-	var deployment *v1beta1.Deployment
+	var deployment *v1beta2.Deployment
 
 	BeforeSuite(func() {
-		clientset := appsv1beta1.NewForConfigOrDie(CopyConfig(config))
+		clientset := appsv1beta2.NewForConfigOrDie(CopyConfig(config))
 
 		deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 
@@ -144,7 +148,7 @@ func Setup(c *rest.Config, image string) error {
 	})
 
 	AfterSuite(func() {
-		clientset := appsv1beta1.NewForConfigOrDie(CopyConfig(config))
+		clientset := appsv1beta2.NewForConfigOrDie(CopyConfig(config))
 
 		deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 

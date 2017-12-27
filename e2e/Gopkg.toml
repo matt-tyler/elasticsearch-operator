@@ -20,6 +20,21 @@
 #  name = "github.com/x/y"
 #  version = "2.4.0"
 
+[[constraint]]
+  branch= "release-1.8"
+  name = "k8s.io/apimachinery"
+
+[[constraint]]
+  branch = "release-1.8"
+  name = "k8s.io/api"
+
+[[constraint]]
+  version = "5.0.x"
+  name = "k8s.io/client-go"
+
+[[constraint]]
+  branch = "release-1.8"
+  name = "k8s.io/apiextensions-apiserver"
 
 [[constraint]]
   branch = "master"

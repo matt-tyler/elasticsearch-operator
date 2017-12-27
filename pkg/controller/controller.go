@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/matt-tyler/elasticsearch-operator/pkg/client"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/spec"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -21,14 +24,22 @@ const maxRetries = 5
 
 type Controller struct {
 	log.Logger
-	client   *rest.RESTClient
-	scheme   *runtime.Scheme
-	queue    workqueue.RateLimitingInterface
-	informer cache.SharedIndexInformer
+	client    *rest.RESTClient
+	scheme    *runtime.Scheme
+	clientset kubernetes.Interface
+	queue     workqueue.RateLimitingInterface
+	informer  cache.SharedIndexInformer
 }
 
-func NewController(client *rest.RESTClient, scheme *runtime.Scheme) *Controller {
+func NewController(config *rest.Config) *Controller {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+
+	clientset := kubernetes.NewForConfigOrDie(config)
+
+	client, scheme, err := client.NewClient(config)
+	if err != nil {
+		panic(err)
+	}
 
 	listWatch := cache.NewListWatchFromClient(
 		client,
@@ -66,6 +77,7 @@ func NewController(client *rest.RESTClient, scheme *runtime.Scheme) *Controller 
 		log.NewLogger(),
 		client,
 		scheme,
+		clientset,
 		queue,
 		informer,
 	}

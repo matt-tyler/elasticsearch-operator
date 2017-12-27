@@ -64,12 +64,7 @@ var RootCmd = &cobra.Command{
 			}()
 		}
 
-		client, scheme, err := NewClient(clientConfig)
-		if err != nil {
-			logger.Panicf("%v", err)
-		}
-
-		controller := NewController(client, scheme)
+		controller := NewController(clientConfig)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

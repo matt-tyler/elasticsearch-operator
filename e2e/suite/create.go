@@ -46,7 +46,7 @@ var _ = Describe("#Create: Creating a cluster", func() {
 		informer = cache.NewSharedIndexInformer(
 			&cache.ListWatch{
 				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					return clientset.Services("").List(metav1.ListOptions{
+					return clientset.CoreV1().Services("").List(metav1.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
 							"app":     "es-cluster",
 							"cluster": clusterName,
@@ -54,7 +54,7 @@ var _ = Describe("#Create: Creating a cluster", func() {
 					})
 				},
 				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					return clientset.Services("").Watch(metav1.ListOptions{
+					return clientset.CoreV1().Services("").Watch(metav1.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
 							"app":     "es-cluster",
 							"cluster": clusterName,
