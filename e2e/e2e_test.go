@@ -20,18 +20,21 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
-
-	"github.com/matt-tyler/elasticsearch-operator/e2e/suite"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"time"
 
 	"github.com/matt-tyler/elasticsearch-operator/e2e/gke"
+	"github.com/matt-tyler/elasticsearch-operator/e2e/suite"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	rbacV1 "k8s.io/api/rbac/v1"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
 var Kubeconfig string
@@ -83,6 +86,15 @@ func RunE2ETests(t *testing.T) {
 		if err := clientcmd.ModifyConfig(configAccess, *(clientConfig(cluster)), false); err != nil {
 			panic(err)
 		}
+
+		// TODO: This is here because x509 certs are throwing 'not valid yet errors'.
+		// need to come up with a better way around this
+		time.Sleep(30 * time.Second)
+
+		err = addClusterAdminBinding(config)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	if Down {
@@ -100,6 +112,8 @@ func RunE2ETests(t *testing.T) {
 			panic(err)
 		}
 	}
+
+	addClusterAdminBinding(config)
 
 	err := suite.Setup(config, Image)
 	if err != nil {
@@ -143,6 +157,40 @@ func createCluster(client gke.GkeClient, clusterID string) {
 	}
 	client.Done(op)
 	fmt.Printf("Cluster %v created\n", clusterID)
+}
+
+func addClusterAdminBinding(config *rest.Config) error {
+	gcloudPath, err := exec.LookPath("gcloud")
+	if err != nil {
+		return err
+	}
+
+	account, err := exec.Command(gcloudPath, "config", "get-value", "account").Output()
+	if err != nil {
+		return err
+	}
+
+	clientset := kubernetes.NewForConfigOrDie(config)
+	_, err = clientset.RbacV1().ClusterRoleBindings().Create(&rbacV1.ClusterRoleBinding{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name: "cluster-admin-binding",
+		},
+		Subjects: []rbacV1.Subject{
+			{
+				Kind:      "User",
+				Name:      strings.TrimRight(string(account), "\r\n"),
+				Namespace: "",
+				APIGroup:  "rbac.authorization.k8s.io",
+			},
+		},
+		RoleRef: rbacV1.RoleRef{
+			Kind:     "ClusterRole",
+			Name:     "cluster-admin",
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	})
+
+	return err
 }
 
 func clientConfig(gc *gke.Cluster) *clientcmdapi.Config {
