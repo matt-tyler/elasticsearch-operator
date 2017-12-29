@@ -1,36 +1,14 @@
 package controller
 
 import (
+	"fmt"
+
+	esV1 "github.com/matt-tyler/elasticsearch-operator/pkg/apis/es/v1"
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/client-go/kubernetes/typed/apps/v1beta1"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	"k8s.io/client-go/rest"
 )
-
-// New creates a new deployment of a cluster
-func New(c *rest.RESTClient, objectMeta metav1.ObjectMeta) error {
-	deployment := newMasterDeployment(objectMeta)
-	deploymentCopy := deployment.DeepCopy()
-
-	service := newMasterService(objectMeta)
-	serviceCopy := service.DeepCopy()
-
-	deploymentClient := v1beta1.New(c).Deployments(objectMeta.Namespace)
-	_, err := deploymentClient.Create(deploymentCopy)
-	if err != nil {
-		return err
-	}
-
-	serviceClient := corev1.New(c).Services(objectMeta.Namespace)
-	_, err = serviceClient.Create(serviceCopy)
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
 func newMasterDeployment(objectMeta metav1.ObjectMeta) *appsv1beta1.Deployment {
 	replicas := new(int32)
@@ -66,18 +44,35 @@ func newMasterDeployment(objectMeta metav1.ObjectMeta) *appsv1beta1.Deployment {
 }
 
 // return a headless service for master discovery
-func newMasterService(objectMeta metav1.ObjectMeta) *v1.Service {
+func newMasterService(cluster *esV1.Cluster) *v1.Service {
+	blockOwnerDeletion := true
+	isController := false
 	service := &v1.Service{
-		ObjectMeta: objectMeta,
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%v-master-service", cluster.Name),
+			Labels: map[string]string{
+				"elasticsearch-cluster": cluster.Name,
+			},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					BlockOwnerDeletion: &blockOwnerDeletion,
+					Controller:         &isController,
+					Kind:               "Cluster",
+					Name:               cluster.Name,
+					UID:                cluster.UID,
+					APIVersion:         esV1.SchemeGroupVersion.String(),
+				},
+			},
+		},
 		Spec: v1.ServiceSpec{
 			Type:      "ClusterIP",
 			ClusterIP: "None",
 			Selector:  nil,
 			Ports: []v1.ServicePort{{
-				Name: "",
+				Name: "rest",
 				Port: 9200,
 			}, {
-				Name: "",
+				Name: "node",
 				Port: 9300,
 			}},
 		},

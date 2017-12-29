@@ -5,16 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/matt-tyler/elasticsearch-operator/pkg/client"
+	clientset "github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned"
+	informers "github.com/matt-tyler/elasticsearch-operator/pkg/client/informers/externalversions"
+	listers "github.com/matt-tyler/elasticsearch-operator/pkg/client/listers/es/v1"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
-	"github.com/matt-tyler/elasticsearch-operator/pkg/spec"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/runtime"
 
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
@@ -24,38 +26,37 @@ const maxRetries = 5
 
 type Controller struct {
 	log.Logger
-	client    *rest.RESTClient
-	scheme    *runtime.Scheme
-	clientset kubernetes.Interface
-	queue     workqueue.RateLimitingInterface
-	informer  cache.SharedIndexInformer
+
+	kubeclientset kubernetes.Interface
+	esclientset   clientset.Interface
+
+	kubeInformerFactory kubeinformers.SharedInformerFactory
+	esInformerFactory   informers.SharedInformerFactory
+
+	clustersSynced cache.InformerSynced
+	servicesSynced cache.InformerSynced
+
+	clusterLister listers.ClusterLister
+	serviceLister corelisters.ServiceLister
+
+	queue workqueue.RateLimitingInterface
 }
 
 func NewController(config *rest.Config) *Controller {
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 
-	clientset := kubernetes.NewForConfigOrDie(config)
+	kubeclientset := kubernetes.NewForConfigOrDie(config)
+	esclientset := clientset.NewForConfigOrDie(config)
 
-	client, scheme, err := client.NewClient(config)
-	if err != nil {
-		panic(err)
-	}
+	resyncPeriod := 0 * time.Second
 
-	listWatch := cache.NewListWatchFromClient(
-		client,
-		spec.ResourcePlural,
-		v1.NamespaceAll,
-		fields.Everything(),
-	)
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeclientset, resyncPeriod)
+	esInformerFactory := informers.NewSharedInformerFactory(esclientset, resyncPeriod)
 
-	informer := cache.NewSharedIndexInformer(
-		listWatch,
-		&spec.Cluster{},
-		0,
-		cache.Indexers{},
-	)
+	clusterInformer := esInformerFactory.Es().V1().Clusters()
+	serviceInformer := kubeInformerFactory.Core().V1().Services()
 
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	clusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
 				queue.Add(key)
@@ -73,13 +74,22 @@ func NewController(config *rest.Config) *Controller {
 		},
 	})
 
+	ctx := context.Background()
+
+	go kubeInformerFactory.Start(ctx.Done())
+	go esInformerFactory.Start(ctx.Done())
+
 	return &Controller{
 		log.NewLogger(),
-		client,
-		scheme,
-		clientset,
+		kubeclientset,
+		esclientset,
+		kubeInformerFactory,
+		esInformerFactory,
+		clusterInformer.Informer().HasSynced,
+		serviceInformer.Informer().HasSynced,
+		clusterInformer.Lister(),
+		serviceInformer.Lister(),
 		queue,
-		informer,
 	}
 }
 
@@ -90,39 +100,68 @@ func (c *Controller) runWorker() {
 }
 
 func (c *Controller) processNextItem() bool {
-	key, quit := c.queue.Get()
-	if quit {
+	obj, shutdown := c.queue.Get()
+
+	if shutdown {
 		return false
 	}
-	defer c.queue.Done(key)
 
-	err := c.processItem(key.(string))
+	err := func(obj interface{}) error {
+		defer c.queue.Done(obj)
+
+		var key string
+		var ok bool
+
+		if key, ok = obj.(string); !ok {
+			c.queue.Forget(obj)
+			runtime.HandleError(fmt.Errorf("expected string in workqueue but got %#v", obj))
+			return nil
+		}
+
+		if err := c.sync(key); err != nil {
+			return fmt.Errorf("error syncing '%s': %s", key, err.Error())
+		}
+
+		c.queue.Forget(obj)
+		return nil
+	}(obj)
+
 	if err != nil {
-		c.queue.Forget(key)
-	} else if c.queue.NumRequeues(key) < maxRetries {
-		c.queue.AddRateLimited(key)
-	} else {
-		c.queue.Forget(key)
-		utilruntime.HandleError(err)
+		runtime.HandleError(err)
 	}
 
 	return true
 }
 
-func (c *Controller) processItem(key string) error {
+func (c *Controller) sync(key string) error {
 	c.Infof("Processing change to %s", key)
 
-	obj, exists, err := c.informer.GetIndexer().GetByKey(key)
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		return fmt.Errorf("Error fetching object with key %s from store: %v", key, err)
-	}
-
-	if !exists {
-		c.Infof("Object was deleted")
+		runtime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
 
-	c.Infof("Object: %#v", obj)
+	cluster, err := c.clusterLister.Clusters(namespace).Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			runtime.HandleError(fmt.Errorf("foo '%s' in work queue no longer exists", key))
+			return nil
+		}
+		return err
+	}
+
+	c.Infof("Object: %#v", cluster)
+
+	masterServiceName := fmt.Sprintf("%v-master-service", cluster.Name)
+	_, err = c.serviceLister.Services(cluster.Namespace).Get(masterServiceName)
+	if errors.IsNotFound(err) {
+		_, err = c.kubeclientset.CoreV1().Services(cluster.Namespace).Create(newMasterService(cluster))
+	}
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -133,9 +172,7 @@ func (c *Controller) Run(ctx context.Context) {
 
 	c.Infof("Starting Controller...")
 
-	go c.informer.Run(ctx.Done())
-
-	if !cache.WaitForCacheSync(ctx.Done(), c.informer.HasSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for cache to sync"))
 		return
 	}

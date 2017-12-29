@@ -2,18 +2,26 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
+	"time"
 
-	. "github.com/matt-tyler/elasticsearch-operator/pkg/client"
+	"github.com/matt-tyler/elasticsearch-operator/pkg/apis/es"
+	esV1 "github.com/matt-tyler/elasticsearch-operator/pkg/apis/es/v1"
 	. "github.com/matt-tyler/elasticsearch-operator/pkg/controller"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/wait"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -24,6 +32,72 @@ func buildConfig(kubeconfig string) (*rest.Config, error) {
 		return clientcmd.BuildConfigFromFlags("", kubeconfig)
 	}
 	return rest.InClusterConfig()
+}
+
+const crdName = esV1.ResourcePlural + "." + es.GroupName
+
+func CreateCustomResourceDefinition(clientset apiextensionsclient.Interface) (*apiextensionsv1beta1.CustomResourceDefinition, error) {
+	logger := log.NewLogger()
+	crd := &apiextensionsv1beta1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: crdName,
+		},
+		Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
+			Group:   es.GroupName,
+			Version: esV1.SchemeGroupVersion.Version,
+			Scope:   apiextensionsv1beta1.NamespaceScoped,
+			Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
+				Plural: esV1.ResourcePlural,
+				Kind:   reflect.TypeOf(esV1.Cluster{}).Name(),
+			},
+		},
+	}
+
+	logger.Debugf("Creating custom resource:\n%v", PrettyJson(crd))
+
+	_, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(crd)
+	if err != nil {
+		logger.Debugf("Failed to create custom resource")
+		return nil, err
+	}
+
+	err = wait.Poll(500*time.Millisecond, 60*time.Second, func() (bool, error) {
+		crd, err = clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(crdName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		for _, cond := range crd.Status.Conditions {
+			switch cond.Type {
+			case apiextensionsv1beta1.Established:
+				if cond.Status == apiextensionsv1beta1.ConditionTrue {
+					return true, err
+				}
+			case apiextensionsv1beta1.NamesAccepted:
+				if cond.Status == apiextensionsv1beta1.ConditionFalse {
+					logger.Errorf("Name conflict: %v\n", cond.Reason)
+				}
+			}
+		}
+		return false, err
+	})
+
+	if err != nil {
+		deleteErr := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(crdName, nil)
+		if deleteErr != nil {
+			return nil, errors.NewAggregate([]error{err, deleteErr})
+		}
+		return nil, err
+	}
+	return crd, nil
+}
+
+func PrettyJson(v interface{}) string {
+	logger := log.NewLogger()
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		logger.Panicf("%v", err)
+	}
+	return string(b)
 }
 
 var RootCmd = &cobra.Command{
