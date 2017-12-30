@@ -103,6 +103,7 @@ var _ = Describe("#Create: Creating a cluster", func() {
 						continue
 					}
 					Expect(service.Spec.ClusterIP).To(Equal("None"))
+					return
 				}
 			}
 		})

@@ -77,7 +77,7 @@ roleRef:
 `
 
 var deploymentTemplate = `
-apiVersion: apps/v1beta1
+apiVersion: apps/v1beta2
 kind: Deployment
 metadata:
   name: elasticsearch-operator
