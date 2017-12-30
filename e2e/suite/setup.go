@@ -14,7 +14,7 @@ import (
 	"k8s.io/api/apps/v1beta2"
 	coreV1 "k8s.io/api/core/v1"
 	rbacV1 "k8s.io/api/rbac/v1"
-	apiextensionsv1beta2 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta2"
+	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -207,15 +207,15 @@ func Setup(c *rest.Config, image string) error {
 	informer := cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return apiextensionsclientset.ApiextensionsV1beta2().
+				return apiextensionsclientset.ApiextensionsV1beta1().
 					CustomResourceDefinitions().List(metav1.ListOptions{})
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return apiextensionsclientset.ApiextensionsV1beta2().
+				return apiextensionsclientset.ApiextensionsV1beta1().
 					CustomResourceDefinitions().Watch(metav1.ListOptions{})
 			},
 		},
-		&apiextensionsv1beta2.CustomResourceDefinition{},
+		&apiextensionsv1beta1.CustomResourceDefinition{},
 		0,
 		cache.Indexers{},
 	)
