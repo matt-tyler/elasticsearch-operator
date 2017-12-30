@@ -130,7 +130,11 @@ var RootCmd = &cobra.Command{
 		if crd != nil {
 			defer func() {
 				logger.Infof("Removing custom resource definition from cluster...")
-				if err := apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(crd.Name, nil); err != nil {
+				deletePolicy := metav1.DeletePropagationForeground
+				err := apiextensionsclientset.ApiextensionsV1beta1().CustomResourceDefinitions().Delete(crd.Name, &metav1.DeleteOptions{
+					PropagationPolicy: &deletePolicy,
+				})
+				if err != nil {
 					logger.Errorf("Failed to remove custom resource definition")
 				} else {
 					logger.Infof("Custom resource definition removed.")
