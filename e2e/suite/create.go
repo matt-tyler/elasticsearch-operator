@@ -2,79 +2,44 @@ package suite
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	core "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
+	esV1 "github.com/matt-tyler/elasticsearch-operator/pkg/apis/es/v1"
+	clusterclientset "github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned"
+	esclient "github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned/typed/es/v1"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	//	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("#Create: Creating a cluster", func() {
-
-	clusterName := "es-test-cluster"
-	var (
-		ctx      context.Context
-		cancel   context.CancelFunc
-		informer cache.SharedIndexInformer
-	)
+	var kubeInformerFactory kubeinformers.SharedInformerFactory
+	var serviceLister corelisters.ServiceLister
+	var ctx context.Context
+	var cancel context.CancelFunc
 
 	BeforeEach(func() {
-		clientset := kubernetes.NewForConfigOrDie(CopyConfig(config))
+		resyncPeriod := 0 * time.Second
+		kubeclientset := kubernetes.NewForConfigOrDie(config)
+		kubeInformerFactory = kubeinformers.NewSharedInformerFactory(kubeclientset, resyncPeriod)
+
+		serviceInformer := kubeInformerFactory.Core().V1().Services()
+
+		serviceLister = serviceInformer.Lister()
+
 		ctx, cancel = context.WithCancel(context.Background())
+		go kubeInformerFactory.Start(ctx.Done())
 
-		indexers := map[string]cache.IndexFunc{
-			"type": func(obj interface{}) ([]string, error) {
-				accessor := meta.NewAccessor()
-				resourceType, err := accessor.Kind(obj.(runtime.Object))
-				if err != nil {
-					return []string{""}, fmt.Errorf("Error accessing type of obj: %v", err)
-				}
-				return []string{resourceType}, nil
-			},
-		}
-
-		informer = cache.NewSharedIndexInformer(
-			&cache.ListWatch{
-				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-					return clientset.CoreV1().Services("").List(metav1.ListOptions{
-						LabelSelector: labels.SelectorFromSet(map[string]string{
-							"app":     "es-cluster",
-							"cluster": clusterName,
-						}).String(),
-					})
-				},
-				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-					return clientset.CoreV1().Services("").Watch(metav1.ListOptions{
-						LabelSelector: labels.SelectorFromSet(map[string]string{
-							"app":     "es-cluster",
-							"cluster": clusterName,
-						}).String(),
-					})
-				},
-			},
-			&core.Service{},
-			0,
-			indexers,
-		)
-
-		go informer.Run(ctx.Done())
-
-		if !cache.WaitForCacheSync(
-			ctx.Done(),
-			informer.HasSynced,
-		) {
-			cancel()
-			Fail("Failed waiting for cache sync")
+		if !cache.WaitForCacheSync(ctx.Done(), serviceInformer.Informer().HasSynced) {
+			Fail("Timed out waiting for cache sync")
 		}
 	})
 
@@ -83,13 +48,39 @@ var _ = Describe("#Create: Creating a cluster", func() {
 	})
 
 	Context("Given a valid cluster definition", func() {
+		var clusterInterface esclient.ClusterInterface
+		var cluster *esV1.Cluster
+
+		BeforeEach(func() {
+			clusterInterface = clusterclientset.NewForConfigOrDie(config).
+				EsV1().Clusters("default")
+
+			cluster = &esV1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "example-cluster",
+					Namespace: "default",
+				},
+				Spec: esV1.ClusterSpec{
+					Name: "example-cluster",
+					Size: 1,
+				},
+			}
+		})
 
 		JustBeforeEach(func() {
 			// create the cluster CRD
+			var err error
+			cluster, err = clusterInterface.Create(cluster)
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		AfterEach(func() {
 			// delete the cluster CRD
+			deletePolicy := metav1.DeletePropagationForeground
+			err := clusterInterface.Delete(cluster.Name, &metav1.DeleteOptions{
+				PropagationPolicy: &deletePolicy,
+			})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("then it should create a new cluster resource", func() {
@@ -104,16 +95,14 @@ var _ = Describe("#Create: Creating a cluster", func() {
 				case <-timeout:
 					Fail("Headless service was not created")
 				default:
-					objs, err := informer.GetIndexer().ByIndex("type", "service")
+					service, err := serviceLister.Services(cluster.Namespace).Get(cluster.Name + "-master-service")
 					if err != nil {
-						Fail(err.Error())
-					}
-
-					for _, obj := range objs {
-						if service, ok := obj.(*core.Service); ok && service.Name == "" {
-							Expect(service.Spec.ClusterIP).To(Equal("None"))
+						if !errors.IsNotFound(err) {
+							Fail(err.Error())
 						}
+						continue
 					}
+					Expect(service.Spec.ClusterIP).To(Equal("None"))
 				}
 			}
 		})

@@ -46,21 +46,6 @@ kind: ClusterRole
 metadata:
   name: e2e-test-role
 rules:
-- apiGroups: ["", "apps"]
-  resources: ["deployments", "services" ]
-  verbs: ["*"]
-`
-
-var roleBindingTemplate = `
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  namespace: {{.Namespace}}
-  name: e2e-test-role-binding-{{.Namespace}}
-roleRef:
-  kind: ClusterRole
-  name: e2e-test-role
-  apiGroup: rbac.authorization.k8s.io
 `
 
 var clusterRoleCRDTemplate = `
@@ -71,6 +56,12 @@ metadata:
 rules:
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
+  verbs: ["*"]
+- apiGroups: ["", "apps"]
+  resources: ["deployments", "services" ]
+  verbs: ["*"]
+- apiGroups: ["es.matt-tyler.github.com"]
+  resources: ["clusters"]
   verbs: ["*"]
 `
 
@@ -176,43 +167,6 @@ func deleteServiceAccount(serviceAccount *coreV1.ServiceAccount, clientset kuber
 	return clientset.CoreV1().ServiceAccounts(serviceAccount.Namespace).Delete(serviceAccount.Name, nil)
 }
 
-func createRoleBinding(serviceAccount *coreV1.ServiceAccount, namespace string, clientset kubernetes.Interface) (*rbacV1.RoleBinding, error) {
-	roleBinding := &rbacV1.RoleBinding{}
-
-	buf := &bytes.Buffer{}
-	p := struct {
-		Namespace string
-	}{namespace}
-
-	tmpl := template.Must(template.New("").Parse(roleBindingTemplate))
-	err := tmpl.Execute(buf, p)
-	if err != nil {
-		return nil, err
-	}
-
-	roleBindingJSON, err := yaml.ToJSON(buf.Bytes())
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(roleBindingJSON, &roleBinding); err != nil {
-		return nil, err
-	}
-
-	roleBinding.Subjects = []rbacV1.Subject{{
-		Kind:      "ServiceAccount",
-		Name:      serviceAccount.Name,
-		Namespace: serviceAccount.Namespace,
-		APIGroup:  "",
-	}}
-
-	return clientset.RbacV1().RoleBindings(namespace).Create(roleBinding)
-}
-
-func deleteRoleBinding(roleBinding *rbacV1.RoleBinding, clientset kubernetes.Interface) error {
-	return clientset.RbacV1().RoleBindings(roleBinding.Namespace).Delete(roleBinding.Name, nil)
-}
-
 func createClusterRoleBinding(serviceAccount *coreV1.ServiceAccount, clientset kubernetes.Interface) (*rbacV1.ClusterRoleBinding, error) {
 	clusterRoleBinding := &rbacV1.ClusterRoleBinding{}
 
@@ -292,7 +246,6 @@ func Setup(c *rest.Config, image string) error {
 
 	clusterRoles := []*rbacV1.ClusterRole{}
 	var serviceAccount *coreV1.ServiceAccount
-	var roleBinding *rbacV1.RoleBinding
 	var clusterRoleBinding *rbacV1.ClusterRoleBinding
 
 	BeforeSuite(func() {
@@ -303,9 +256,6 @@ func Setup(c *rest.Config, image string) error {
 		Expect(err).NotTo(HaveOccurred())
 
 		serviceAccount, err = createServiceAccount("default", k8s)
-		Expect(err).NotTo(HaveOccurred())
-
-		roleBinding, err = createRoleBinding(serviceAccount, "default", k8s)
 		Expect(err).NotTo(HaveOccurred())
 
 		clusterRoleBinding, err = createClusterRoleBinding(serviceAccount, k8s)
@@ -382,10 +332,6 @@ func Setup(c *rest.Config, image string) error {
 
 				if !exists {
 					k8s := kubernetes.NewForConfigOrDie(CopyConfig(config))
-
-					if roleBinding != nil {
-						_ = deleteRoleBinding(roleBinding, k8s)
-					}
 
 					if clusterRoleBinding != nil {
 						_ = deleteClusterRoleBinding(clusterRoleBinding, k8s)

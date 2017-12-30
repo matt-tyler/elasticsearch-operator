@@ -7,6 +7,7 @@ import (
 	appsv1beta1 "k8s.io/api/apps/v1beta1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -54,6 +55,11 @@ func newMasterService(cluster *esV1.Cluster) *v1.Service {
 				"elasticsearch-cluster": cluster.Name,
 			},
 			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(cluster, schema.GroupVersionKind{
+					Group:   esV1.SchemeGroupVersion.Group,
+					Version: esV1.SchemeGroupVersion.Version,
+					Kind:    "Cluster",
+				}),
 				{
 					BlockOwnerDeletion: &blockOwnerDeletion,
 					Controller:         &isController,

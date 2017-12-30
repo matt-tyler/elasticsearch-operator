@@ -1,4 +1,4 @@
-apiVersion: "elasticsearch.matt-tyler.github.com/v1"
+apiVersion: "es.matt-tyler.github.com/v1"
 kind: Cluster
 metadata:
   name: example-cluster
