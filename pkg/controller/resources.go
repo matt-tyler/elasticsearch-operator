@@ -46,8 +46,6 @@ func newMasterDeployment(objectMeta metav1.ObjectMeta) *appsv1beta1.Deployment {
 
 // return a headless service for master discovery
 func newMasterService(cluster *esV1.Cluster) *v1.Service {
-	blockOwnerDeletion := true
-	isController := false
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf("%v-master-service", cluster.Name),
@@ -60,14 +58,6 @@ func newMasterService(cluster *esV1.Cluster) *v1.Service {
 					Version: esV1.SchemeGroupVersion.Version,
 					Kind:    "Cluster",
 				}),
-				{
-					BlockOwnerDeletion: &blockOwnerDeletion,
-					Controller:         &isController,
-					Kind:               "Cluster",
-					Name:               cluster.Name,
-					UID:                cluster.UID,
-					APIVersion:         esV1.SchemeGroupVersion.String(),
-				},
 			},
 		},
 		Spec: v1.ServiceSpec{
