@@ -48,10 +48,8 @@ func newMasterDeployment(objectMeta metav1.ObjectMeta) *appsv1beta1.Deployment {
 func newMasterService(cluster *esV1.Cluster) *v1.Service {
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("%v-master-service", cluster.Name),
-			Labels: map[string]string{
-				"elasticsearch-cluster": cluster.Name,
-			},
+			Name:   fmt.Sprintf("%v-master-service", cluster.Name),
+			Labels: cluster.Labels,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(cluster, schema.GroupVersionKind{
 					Group:   esV1.SchemeGroupVersion.Group,
