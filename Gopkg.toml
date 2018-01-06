@@ -42,17 +42,17 @@
   name = "github.com/spf13/viper"
 
 [[constraint]]
-  version = "5.0.x"
+  version = "6.0.x"
   name = "k8s.io/client-go"
 
 [[constraint]]
-  branch = "release-1.8"
+  branch = "release-1.9"
   name = "k8s.io/apimachinery"
 
 [[constraint]]
-  branch = "release-1.8"
+  branch = "release-1.9"
   name = "k8s.io/api"
 
 [[constraint]]
-  branch = "release-1.8"
+  branch = "release-1.9"
   name = "k8s.io/apiextensions-apiserver"
