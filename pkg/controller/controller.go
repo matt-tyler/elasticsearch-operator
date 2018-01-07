@@ -153,6 +153,7 @@ func (c *Controller) sync(key string) error {
 
 	c.Infof("Object: %#v", cluster)
 
+	c.Infof("create master discovery service...")
 	masterServiceName := fmt.Sprintf("%v-master-service", cluster.Name)
 	_, err = c.serviceLister.Services(cluster.Namespace).Get(masterServiceName)
 	if errors.IsNotFound(err) {
