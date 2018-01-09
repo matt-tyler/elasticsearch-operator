@@ -8,23 +8,23 @@ import (
 	"html/template"
 	"time"
 
+	"github.com/matt-tyler/elasticsearch-operator/pkg/apis/es"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	esV1 "github.com/matt-tyler/elasticsearch-operator/pkg/apis/es/v1"
 	"k8s.io/api/apps/v1beta2"
 	coreV1 "k8s.io/api/core/v1"
 	rbacV1 "k8s.io/api/rbac/v1"
-	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	informers "k8s.io/apiextensions-apiserver/pkg/client/informers/externalversions"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	appsv1beta2 "k8s.io/client-go/kubernetes/typed/apps/v1beta2"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
 )
 
 var config *rest.Config
@@ -40,14 +40,6 @@ metadata:
   name: e2e-service-account
 `
 
-var clusterRoleTemplate = `
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: e2e-test-role
-rules:
-`
-
 var clusterRoleCRDTemplate = `
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -57,11 +49,11 @@ rules:
 - apiGroups: ["apiextensions.k8s.io"]
   resources: ["customresourcedefinitions"]
   verbs: ["*"]
-- apiGroups: ["", "apps"]
+- apiGroups: ["apps", "extensions", ""]
   resources: ["deployments", "services" ]
   verbs: ["*"]
 - apiGroups: ["es.matt-tyler.github.com"]
-  resources: ["clusters"]
+  resources: ["clusters", "clusters/finalizers"]
   verbs: ["*"]
 `
 
@@ -101,7 +93,7 @@ func createClusterRoles(clientset kubernetes.Interface) ([]*rbacV1.ClusterRole, 
 	clusterRole := &rbacV1.ClusterRole{}
 	roles := []*rbacV1.ClusterRole{}
 
-	clusterRoleJSON, err := yaml.ToJSON([]byte(clusterRoleTemplate))
+	clusterRoleJSON, err := yaml.ToJSON([]byte(clusterRoleCRDTemplate))
 	if err != nil {
 		return nil, err
 	}
@@ -111,21 +103,6 @@ func createClusterRoles(clientset kubernetes.Interface) ([]*rbacV1.ClusterRole, 
 	}
 
 	role, err := clientset.RbacV1().ClusterRoles().Create(clusterRole)
-	if err != nil {
-		return nil, err
-	}
-	roles = append(roles, role)
-
-	clusterRoleJSON, err = yaml.ToJSON([]byte(clusterRoleCRDTemplate))
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(clusterRoleJSON, &clusterRole); err != nil {
-		return nil, err
-	}
-
-	role, err = clientset.RbacV1().ClusterRoles().Create(clusterRole)
 	if err != nil {
 		return nil, err
 	}
@@ -200,44 +177,18 @@ func Setup(c *rest.Config, image string) error {
 
 	// TODO: Use CopyConfig when bumping client-go to >= 4.0
 
+	resyncPeriod := 1 * time.Second
 	apiextensionsclientset := apiextensionsclient.NewForConfigOrDie(CopyConfig(config))
+	factory := informers.NewSharedInformerFactory(apiextensionsclientset, resyncPeriod)
 
-	queue := workqueue.New()
+	extInformer := factory.Apiextensions().V1beta1().CustomResourceDefinitions()
 
-	informer := cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return apiextensionsclientset.ApiextensionsV1beta1().
-					CustomResourceDefinitions().List(metav1.ListOptions{})
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return apiextensionsclientset.ApiextensionsV1beta1().
-					CustomResourceDefinitions().Watch(metav1.ListOptions{})
-			},
-		},
-		&apiextensionsv1beta1.CustomResourceDefinition{},
-		0,
-		cache.Indexers{},
-	)
-
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
-				queue.Add(key)
-			}
-		},
-		DeleteFunc: func(obj interface{}) {
-			if key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj); err == nil {
-				queue.Add(key)
-			}
-		},
-	})
+	crdLister := extInformer.Lister()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go informer.Run(ctx.Done())
-
-	if !cache.WaitForCacheSync(ctx.Done(), informer.HasSynced) {
+	go factory.Start(ctx.Done())
+	if !cache.WaitForCacheSync(ctx.Done(), extInformer.Informer().HasSynced) {
 		cancel()
 		return errors.New("Failed waiting for cache sync")
 	}
@@ -248,110 +199,116 @@ func Setup(c *rest.Config, image string) error {
 	var serviceAccount *coreV1.ServiceAccount
 	var clusterRoleBinding *rbacV1.ClusterRoleBinding
 
-	BeforeSuite(func() {
-		var err error
-
+	deleteRBAC := func() {
 		k8s := kubernetes.NewForConfigOrDie(CopyConfig(config))
-		clusterRoles, err = createClusterRoles(k8s)
-		Expect(err).NotTo(HaveOccurred())
 
-		serviceAccount, err = createServiceAccount("default", k8s)
-		Expect(err).NotTo(HaveOccurred())
-
-		clusterRoleBinding, err = createClusterRoleBinding(serviceAccount, k8s)
-		Expect(err).NotTo(HaveOccurred())
-
-		clientset := appsv1beta2.NewForConfigOrDie(CopyConfig(config))
-
-		deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
-
-		buf := &bytes.Buffer{}
-		p := &Params{
-			image,
+		if clusterRoleBinding != nil {
+			_ = deleteClusterRoleBinding(clusterRoleBinding, k8s)
 		}
 
-		tmpl := template.Must(template.New("").Parse(deploymentTemplate))
-		err = tmpl.Execute(buf, p)
-		Expect(err).NotTo(HaveOccurred())
+		if serviceAccount != nil {
+			_ = deleteServiceAccount(serviceAccount, k8s)
+		}
 
-		deploymentJSON, err := yaml.ToJSON(buf.Bytes())
-		Expect(err).NotTo(HaveOccurred())
+		for _, role := range clusterRoles {
+			_ = deleteClusterRole(role, k8s)
+		}
+	}
 
-		err = json.Unmarshal(deploymentJSON, &deployment)
-		Expect(err).NotTo(HaveOccurred())
+	func() {
+		BeforeSuite(func() {
+			var err error
 
-		deployment, err = deploymentClient.Create(deployment)
-		Expect(err).NotTo(HaveOccurred())
+			k8s := kubernetes.NewForConfigOrDie(CopyConfig(config))
+			clusterRoles, err = createClusterRoles(k8s)
+			Expect(err).NotTo(HaveOccurred())
 
-		timeout := time.After(time.Second * 10)
+			serviceAccount, err = createServiceAccount("default", k8s)
+			Expect(err).NotTo(HaveOccurred())
 
-		for {
-			select {
-			case <-timeout:
-				Fail("Creating custom resource definition exceeded timeout")
-			default:
-				key, _ := queue.Get()
-				defer queue.Done(key)
+			clusterRoleBinding, err = createClusterRoleBinding(serviceAccount, k8s)
+			Expect(err).NotTo(HaveOccurred())
 
-				_, exists, err := informer.GetIndexer().GetByKey(key.(string))
-				if err != nil {
-					Fail(err.Error())
-				}
+			clientset := appsv1beta2.NewForConfigOrDie(CopyConfig(config))
 
-				if exists {
+			deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
+
+			buf := &bytes.Buffer{}
+			p := &Params{
+				image,
+			}
+
+			tmpl := template.Must(template.New("").Parse(deploymentTemplate))
+			err = tmpl.Execute(buf, p)
+			Expect(err).NotTo(HaveOccurred())
+
+			deploymentJSON, err := yaml.ToJSON(buf.Bytes())
+			Expect(err).NotTo(HaveOccurred())
+
+			err = json.Unmarshal(deploymentJSON, &deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			deployment, err = deploymentClient.Create(deployment)
+			Expect(err).NotTo(HaveOccurred())
+
+			timeout := time.After(time.Second * 10)
+
+			for {
+				select {
+				case <-timeout:
+					Fail("Creating custom resource definition exceeded timeout")
+				default:
+					time.Sleep(time.Second)
+					_, err = crdLister.Get(esV1.ResourcePlural + "." + es.GroupName)
+					if err != nil {
+						continue
+					}
 					return
 				}
 			}
-		}
-	})
-
-	AfterSuite(func() {
-		clientset := appsv1beta2.NewForConfigOrDie(CopyConfig(config))
-
-		deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
-
-		deletePolicy := metav1.DeletePropagationForeground
-		err := deploymentClient.Delete(deployment.Name, &metav1.DeleteOptions{
-			PropagationPolicy: &deletePolicy,
 		})
-		Expect(err).NotTo(HaveOccurred())
+	}()
 
-		timeout := time.After(time.Second * 10)
-		for {
-			select {
-			case <-timeout:
-				Fail("Deleting custom resource definition exceeded time out.")
-			default:
-				key, _ := queue.Get()
-				defer queue.Done(key)
+	func() {
+		AfterSuite(func() {
+			clientset := appsv1beta2.NewForConfigOrDie(CopyConfig(config))
 
-				_, exists, err := informer.GetIndexer().GetByKey(key.(string))
-				if err != nil {
-					Fail(err.Error())
-				}
+			deploymentClient := clientset.Deployments(metav1.NamespaceDefault)
 
-				if !exists {
-					k8s := kubernetes.NewForConfigOrDie(CopyConfig(config))
+			deletePolicy := metav1.DeletePropagationForeground
+			err := deploymentClient.Delete(deployment.Name, &metav1.DeleteOptions{
+				PropagationPolicy: &deletePolicy,
+			})
+			Expect(err).NotTo(HaveOccurred())
 
-					if clusterRoleBinding != nil {
-						_ = deleteClusterRoleBinding(clusterRoleBinding, k8s)
-					}
+			defer cancel()
+			defer deleteRBAC()
 
-					if serviceAccount != nil {
-						_ = deleteServiceAccount(serviceAccount, k8s)
-					}
-
-					for _, role := range clusterRoles {
-						_ = deleteClusterRole(role, k8s)
+			timeout := time.After(time.Second * 10)
+			for {
+				select {
+				case <-timeout:
+					Fail("Deleting operator exceeded time out.")
+					return
+				default:
+					time.Sleep(time.Second)
+					_, err := crdLister.Get(esV1.ResourcePlural + "." + es.GroupName)
+					if err == nil {
+						continue
 					}
 
 					cancel()
-					queue.ShutDown()
+
+					if !kerrors.IsNotFound(err) {
+						Fail(err.Error())
+						return
+					}
+
 					return
 				}
 			}
-		}
-	})
+		})
+	}()
 
 	return nil
 }

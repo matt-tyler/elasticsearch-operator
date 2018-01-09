@@ -22,7 +22,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/matt-tyler/elasticsearch-operator/e2e/gke"
 	"github.com/matt-tyler/elasticsearch-operator/e2e/suite"
@@ -86,10 +85,6 @@ func RunE2ETests(t *testing.T) {
 		if err := clientcmd.ModifyConfig(configAccess, *(clientConfig(cluster)), false); err != nil {
 			panic(err)
 		}
-
-		// TODO: This is here because x509 certs are throwing 'not valid yet errors'.
-		// need to come up with a better way around this
-		time.Sleep(30 * time.Second)
 
 		err = addClusterAdminBinding(config)
 		if err != nil {
