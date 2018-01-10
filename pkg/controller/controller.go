@@ -6,23 +6,47 @@ import (
 	"time"
 
 	clientset "github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned"
+	"github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned/scheme"
 	informers "github.com/matt-tyler/elasticsearch-operator/pkg/client/informers/externalversions"
 	listers "github.com/matt-tyler/elasticsearch-operator/pkg/client/listers/es/v1"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/runtime"
 
+	clusterscheme "github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned/scheme"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 )
 
 const maxRetries = 5
+const controllerAgentName = "elasticsearch-cluster-controller"
+
+const (
+	// SuccessSynced is used as part of the Event 'reason' when a cluster is synced
+	SuccessSynced = "Synced"
+
+	// ErrResourceExists is used as part of the Event 'reason' when a cluster fails
+	// to sync due to a resource already existing
+	ErrResourceExists = "ErrResourceExists"
+
+	// MessageResourceExists is the message used for events when a resource
+	// fails to sync due to it already existing
+	MessageResourceExists = "Resource %q already exists and is not managed by controller"
+
+	// MessageResourceSynced is the messaged used for an Event fire when a Cluster
+	// is successfully synced.
+	MessageResourceSynced = "Resource %q synced successfully"
+)
 
 type Controller struct {
 	log.Logger
@@ -40,6 +64,8 @@ type Controller struct {
 	serviceLister corelisters.ServiceLister
 
 	queue workqueue.RateLimitingInterface
+
+	recorder record.EventRecorder
 }
 
 func NewController(config *rest.Config) *Controller {
@@ -79,8 +105,16 @@ func NewController(config *rest.Config) *Controller {
 	go kubeInformerFactory.Start(ctx.Done())
 	go esInformerFactory.Start(ctx.Done())
 
+	logger := log.NewLogger()
+
+	clusterscheme.AddToScheme(scheme.Scheme)
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(logger.Infof)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
+
 	return &Controller{
-		log.NewLogger(),
+		logger,
 		kubeclientset,
 		esclientset,
 		kubeInformerFactory,
@@ -90,6 +124,7 @@ func NewController(config *rest.Config) *Controller {
 		clusterInformer.Lister(),
 		serviceInformer.Lister(),
 		queue,
+		recorder,
 	}
 }
 
@@ -155,14 +190,22 @@ func (c *Controller) sync(key string) error {
 
 	c.Infof("create master discovery service...")
 	masterServiceName := fmt.Sprintf("%v-master-service", cluster.Name)
-	_, err = c.serviceLister.Services(cluster.Namespace).Get(masterServiceName)
+	masterService, err := c.serviceLister.Services(cluster.Namespace).Get(masterServiceName)
 	if errors.IsNotFound(err) {
-		_, err = c.kubeclientset.CoreV1().Services(cluster.Namespace).Create(newMasterService(cluster))
+		masterService, err = c.kubeclientset.CoreV1().Services(cluster.Namespace).Create(newMasterService(cluster))
 	}
 
 	if err != nil {
 		return err
 	}
+
+	if !metav1.IsControlledBy(masterService, cluster) {
+		msg := fmt.Sprintf(MessageResourceExists, masterService.Name)
+		c.recorder.Event(cluster, corev1.EventTypeWarning, ErrResourceExists, msg)
+		return fmt.Errorf(msg)
+	}
+
+	c.recorder.Event(cluster, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 
 	return nil
 }
