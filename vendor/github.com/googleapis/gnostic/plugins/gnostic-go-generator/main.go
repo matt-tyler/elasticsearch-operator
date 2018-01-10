@@ -17,10 +17,10 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 
-	openapiv2 "github.com/googleapis/gnostic/OpenAPIv2"
-	openapiv3 "github.com/googleapis/gnostic/OpenAPIv3"
 	plugins "github.com/googleapis/gnostic/plugins"
 )
 
@@ -29,7 +29,7 @@ func main() {
 	env, err := plugins.NewEnvironment()
 	env.RespondAndExitIfError(err)
 
-	packageName := env.OutputPath
+	packageName := env.Request.OutputPath
 
 	// Use the name used to run the plugin to decide which files to generate.
 	var files []string
@@ -42,21 +42,28 @@ func main() {
 		files = []string{"client.go", "server.go", "provider.go", "types.go", "constants.go"}
 	}
 
-	// Create the model.
-	var model *ServiceModel
-	if documentv2, ok := env.Document.(*openapiv2.Document); ok {
-		model, err = NewServiceModelV2(documentv2, packageName)
-	} else if documentv3, ok := env.Document.(*openapiv3.Document); ok {
-		model, err = NewServiceModelV3(documentv3, packageName)
+	// Get the code surface model.
+	model := env.Request.Surface
+
+	if model == nil {
+		err = errors.New("No generated code surface model is available.")
+		env.RespondAndExitIfError(err)
 	}
-	env.RespondAndExitIfError(err)
+
+	// Customize the code surface model for Go
+	NewGoLanguageModel().Prepare(model)
+
+	modelJSON, _ := json.MarshalIndent(model, "", "  ")
+	modelFile := &plugins.File{Name: "model.json", Data: modelJSON}
+	env.Response.Files = append(env.Response.Files, modelFile)
 
 	// Create the renderer.
 	renderer, err := NewServiceRenderer(model)
+	renderer.Package = packageName
 	env.RespondAndExitIfError(err)
 
 	// Run the renderer to generate files and add them to the response object.
-	err = renderer.Generate(env.Response, files)
+	err = renderer.Render(env.Response, files)
 	env.RespondAndExitIfError(err)
 
 	// Return with success.

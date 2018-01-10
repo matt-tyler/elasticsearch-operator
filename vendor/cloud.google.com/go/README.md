@@ -33,39 +33,75 @@ make backwards-incompatible changes.
 
 ## News
 
-_July 31, 2017_
+_December 11, 2017_
 
-*v0.11.0*
+*v0.17.0*
 
-- Clients for spanner, pubsub and video are now in beta.
+- firestore BREAKING CHANGES:
+  - Remove UpdateMap and UpdateStruct; rename UpdatePaths to Update.
+    Change
+        `docref.UpdateMap(ctx, map[string]interface{}{"a.b", 1})`
+    to
+        `docref.Update(ctx, []firestore.Update{{Path: "a.b", Value: 1}})`
 
-- New client for DLP.
+    Change
+        `docref.UpdateStruct(ctx, []string{"Field"}, aStruct)`
+    to
+        `docref.Update(ctx, []firestore.Update{{Path: "Field", Value: aStruct.Field}})`
+  - Rename MergePaths to Merge; require args to be FieldPaths
+  - A value stored as an integer can be read into a floating-point field, and vice versa.
+- bigtable/cmd/cbt:
+  - Support deleting a column.
+  - Add regex option for row read.
+- spanner: Mark stable.
+- storage:
+  - Add Reader.ContentEncoding method.
+  - Fix handling of SignedURL headers.
+- bigquery:
+  - If Uploader.Put is called with no rows, it returns nil without making a
+    call.
+  - Schema inference supports the "nullable" option in struct tags for
+    non-required fields.
+  - TimePartitioning supports "Field".
 
-- spanner: performance and testing improvements.
 
-- storage: requester-pays buckets are supported.
+_October 30, 2017_
 
-- storage, profiler, bigtable, bigquery: bug fixes and other minor improvements.
+*v0.16.0*
 
-- pubsub: bug fixes and other minor improvements
+- Other bigquery changes:
+  - `JobIterator.Next` returns `*Job`; removed `JobInfo` (BREAKING CHANGE).
+  - UseStandardSQL is deprecated; set UseLegacySQL to true if you need
+    Legacy SQL.
+  - Uploader.Put will generate a random insert ID if you do not provide one.
+  - Support time partitioning for load jobs.
+  - Support dry-run queries.
+  - A `Job` remembers its last retrieved status.
+  - Support retrieving job configuration.
+  - Support labels for jobs and tables.
+  - Support dataset access lists.
+  - Improve support for external data sources, including data from Bigtable and
+    Google Sheets, and tables with external data.
+  - Support updating a table's view configuration.
+  - Fix uploading civil times with nanoseconds.
 
-_June 17, 2017_
+- storage: 
+  - Support PubSub notifications.
+  - Support Requester Pays buckets.
+
+- profiler: Support goroutine and mutex profile types.
 
 
-*v0.10.0*
+_October 3, 2017_
 
-- pubsub: Subscription.ModifyPushConfig replaced with Subscription.Update.
+*v0.15.0*
 
-- pubsub: Subscription.Receive now runs concurrently for higher throughput.
+- firestore: beta release. See the
+  [announcement](https://firebase.googleblog.com/2017/10/introducing-cloud-firestore.html).
 
-- vision: cloud.google.com/go/vision is deprecated. Use
-cloud.google.com/go/vision/apiv1 instead.
+- errorreporting: The existing package has been redesigned.
 
-- translation: now stable.
-
-- trace: several changes to the surface. See the link below.
-
-[Code changes required from v0.9.0.](https://github.com/GoogleCloudPlatform/google-cloud-go/blob/master/MIGRATION.md)
+- errors: This package has been removed. Use errorreporting.
 
 
 [Older news](https://github.com/GoogleCloudPlatform/google-cloud-go/blob/master/old-news.md)
@@ -75,20 +111,21 @@ cloud.google.com/go/vision/apiv1 instead.
 Google API                       | Status       | Package
 ---------------------------------|--------------|-----------------------------------------------------------
 [Datastore][cloud-datastore]     | stable       | [`cloud.google.com/go/datastore`][cloud-datastore-ref]
+[Firestore][cloud-firestore]     | beta         | [`cloud.google.com/go/firestore`][cloud-firestore-ref]
 [Storage][cloud-storage]         | stable       | [`cloud.google.com/go/storage`][cloud-storage-ref]
 [Bigtable][cloud-bigtable]       | beta         | [`cloud.google.com/go/bigtable`][cloud-bigtable-ref]
 [BigQuery][cloud-bigquery]       | beta         | [`cloud.google.com/go/bigquery`][cloud-bigquery-ref]
 [Logging][cloud-logging]         | stable       | [`cloud.google.com/go/logging`][cloud-logging-ref]
-[Monitoring][cloud-monitoring]   | alpha        | [`cloud.google.com/go/monitoring/apiv3`][cloud-monitoring-ref]
+[Monitoring][cloud-monitoring]   | beta         | [`cloud.google.com/go/monitoring/apiv3`][cloud-monitoring-ref]
 [Pub/Sub][cloud-pubsub]          | beta         | [`cloud.google.com/go/pubsub`][cloud-pubsub-ref]
-[Vision][cloud-vision]           | beta         | [`cloud.google.com/go/vision/apiv1`][cloud-vision-ref]
-[Language][cloud-language]       | beta         | [`cloud.google.com/go/language/apiv1`][cloud-language-ref]
-[Speech][cloud-speech]           | beta         | [`cloud.google.com/go/speech/apiv1`][cloud-speech-ref]
-[Spanner][cloud-spanner]         | beta         | [`cloud.google.com/go/spanner`][cloud-spanner-ref]
+[Vision][cloud-vision]           | stable       | [`cloud.google.com/go/vision/apiv1`][cloud-vision-ref]
+[Language][cloud-language]       | stable       | [`cloud.google.com/go/language/apiv1`][cloud-language-ref]
+[Speech][cloud-speech]           | stable       | [`cloud.google.com/go/speech/apiv1`][cloud-speech-ref]
+[Spanner][cloud-spanner]         | stable       | [`cloud.google.com/go/spanner`][cloud-spanner-ref]
 [Translation][cloud-translation] | stable       | [`cloud.google.com/go/translate`][cloud-translation-ref]
 [Trace][cloud-trace]             | alpha        | [`cloud.google.com/go/trace`][cloud-trace-ref]
 [Video Intelligence][cloud-video]| beta         | [`cloud.google.com/go/videointelligence/apiv1beta1`][cloud-video-ref]
-[ErrorReporting][cloud-errors]   | alpha        | [`cloud.google.com/go/errors`][cloud-errors-ref]
+[ErrorReporting][cloud-errors]   | alpha        | [`cloud.google.com/go/errorreporting`][cloud-errors-ref]
 
 
 > **Alpha status**: the API is still being actively developed. As a
@@ -409,6 +446,11 @@ for more information.
 [cloud-datastore-docs]: https://cloud.google.com/datastore/docs
 [cloud-datastore-activation]: https://cloud.google.com/datastore/docs/activate
 
+[cloud-firestore]: https://cloud.google.com/firestore/
+[cloud-firestore-ref]: https://godoc.org/cloud.google.com/go/firestore
+[cloud-firestore-docs]: https://cloud.google.com/firestore/docs
+[cloud-firestore-activation]: https://cloud.google.com/firestore/docs/activate
+
 [cloud-pubsub]: https://cloud.google.com/pubsub/
 [cloud-pubsub-ref]: https://godoc.org/cloud.google.com/go/pubsub
 [cloud-pubsub-docs]: https://cloud.google.com/pubsub/docs
@@ -455,6 +497,6 @@ for more information.
 [cloud-video-ref]: https://godoc.org/cloud.google.com/go/videointelligence/apiv1beta1
 
 [cloud-errors]: https://cloud.google.com/error-reporting/
-[cloud-errors-ref]: https://godoc.org/cloud.google.com/go/errors
+[cloud-errors-ref]: https://godoc.org/cloud.google.com/go/errorreporting
 
 [default-creds]: https://developers.google.com/identity/protocols/application-default-credentials
