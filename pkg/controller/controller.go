@@ -205,7 +205,8 @@ func (c *Controller) sync(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	c.recorder.Event(cluster, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+	msg := fmt.Sprintf(MessageResourceSynced, cluster.Name)
+	c.recorder.Event(cluster, corev1.EventTypeNormal, SuccessSynced, msg)
 
 	return nil
 }
