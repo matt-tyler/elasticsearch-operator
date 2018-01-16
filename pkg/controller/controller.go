@@ -21,6 +21,7 @@ import (
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	appslisters "k8s.io/client-go/listers/apps/v1beta2"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -57,11 +58,13 @@ type Controller struct {
 	kubeInformerFactory kubeinformers.SharedInformerFactory
 	esInformerFactory   informers.SharedInformerFactory
 
-	clustersSynced cache.InformerSynced
-	servicesSynced cache.InformerSynced
+	clustersSynced    cache.InformerSynced
+	servicesSynced    cache.InformerSynced
+	deploymentsSynced cache.InformerSynced
 
-	clusterLister listers.ClusterLister
-	serviceLister corelisters.ServiceLister
+	clusterLister    listers.ClusterLister
+	serviceLister    corelisters.ServiceLister
+	deploymentLister appslisters.DeploymentLister
 
 	queue workqueue.RateLimitingInterface
 
@@ -81,6 +84,7 @@ func NewController(config *rest.Config) *Controller {
 
 	clusterInformer := esInformerFactory.Es().V1().Clusters()
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
+	deploymentInformer := kubeInformerFactory.Apps().V1beta2().Deployments()
 
 	clusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -121,8 +125,10 @@ func NewController(config *rest.Config) *Controller {
 		esInformerFactory,
 		clusterInformer.Informer().HasSynced,
 		serviceInformer.Informer().HasSynced,
+		deploymentInformer.Informer().HasSynced,
 		clusterInformer.Lister(),
 		serviceInformer.Lister(),
+		deploymentInformer.Lister(),
 		queue,
 		recorder,
 	}
@@ -205,6 +211,23 @@ func (c *Controller) sync(key string) error {
 		return fmt.Errorf(msg)
 	}
 
+	c.Infof("Creating master node deployment...")
+	masterDeploymentName := fmt.Sprintf("%v-master-deployment", cluster.Name)
+	masterDeployment, err := c.deploymentLister.Deployments(cluster.Namespace).Get(masterDeploymentName)
+	if errors.IsNotFound(err) {
+		masterDeployment, err = c.kubeclientset.AppsV1beta2().Deployments(cluster.Namespace).Create(newMasterDeployment(cluster))
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if !metav1.IsControlledBy(masterDeployment, cluster) {
+		msg := fmt.Sprintf(MessageResourceExists, masterDeployment.Name)
+		c.recorder.Event(cluster, corev1.EventTypeWarning, ErrResourceExists, msg)
+		return fmt.Errorf(msg)
+	}
+
 	msg := fmt.Sprintf(MessageResourceSynced, cluster.Name)
 	c.recorder.Event(cluster, corev1.EventTypeNormal, SuccessSynced, msg)
 
@@ -217,7 +240,7 @@ func (c *Controller) Run(ctx context.Context) {
 
 	c.Infof("Starting Controller...")
 
-	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced, c.servicesSynced, c.deploymentsSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for cache to sync"))
 		return
 	}

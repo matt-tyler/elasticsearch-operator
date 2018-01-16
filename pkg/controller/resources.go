@@ -4,32 +4,55 @@ import (
 	"fmt"
 
 	esV1 "github.com/matt-tyler/elasticsearch-operator/pkg/apis/es/v1"
-	appsv1beta1 "k8s.io/api/apps/v1beta1"
+	v1beta2 "k8s.io/api/apps/v1beta2"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func newMasterDeployment(objectMeta metav1.ObjectMeta) *appsv1beta1.Deployment {
-	replicas := new(int32)
-	deployment := &appsv1beta1.Deployment{
-		ObjectMeta: objectMeta,
-		Spec: appsv1beta1.DeploymentSpec{
-			Strategy: appsv1beta1.DeploymentStrategy{
-				Type: appsv1beta1.RollingUpdateDeploymentStrategyType,
-				RollingUpdate: &appsv1beta1.RollingUpdateDeployment{
+func newMasterDeployment(cluster *esV1.Cluster) *v1beta2.Deployment {
+	replicas := int32(1)
+	selector := metav1.LabelSelector{
+		MatchLabels: map[string]string{
+			"role": "master",
+		},
+	}
+
+	for k, v := range cluster.Labels {
+		metav1.AddLabelToSelector(&selector, k, v)
+	}
+
+	deployment := &v1beta2.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   fmt.Sprintf("%v-master-deployment", cluster.Name),
+			Labels: cluster.Labels,
+			OwnerReferences: []metav1.OwnerReference{
+				*metav1.NewControllerRef(cluster, schema.GroupVersionKind{
+					Group:   esV1.SchemeGroupVersion.Group,
+					Version: esV1.SchemeGroupVersion.Version,
+					Kind:    "Cluster",
+				}),
+			},
+		},
+		Spec: v1beta2.DeploymentSpec{
+			Strategy: v1beta2.DeploymentStrategy{
+				Type: v1beta2.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &v1beta2.RollingUpdateDeployment{
 					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 				},
 			},
-			Replicas: replicas,
+			Replicas: &replicas,
+			Selector: &selector,
 			Template: v1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: selector.MatchLabels,
+				},
 				Spec: v1.PodSpec{
 					Containers: []v1.Container{{
 						Name:            "elastic-master",
-						Image:           "",
+						Image:           "docker.elastic.co/elasticsearch/elasticsearch-oss:6.1.1",
 						ImagePullPolicy: v1.PullIfNotPresent,
 						Ports: []v1.ContainerPort{{
 							ContainerPort: 9200,
