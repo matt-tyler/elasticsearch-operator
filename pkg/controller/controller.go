@@ -135,6 +135,7 @@ func NewController(config *rest.Config) *Controller {
 }
 
 func (c *Controller) runWorker() {
+	c.Infof("Processing items")
 	for c.processNextItem() {
 		// continue looping
 	}
@@ -246,6 +247,8 @@ func (c *Controller) Run(ctx context.Context) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for cache to sync"))
 		return
 	}
+
+	c.Infof("Controller started")
 
 	wait.Until(c.runWorker, time.Second, ctx.Done())
 }
