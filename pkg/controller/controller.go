@@ -211,11 +211,13 @@ func (c *Controller) sync(key string) error {
 		return fmt.Errorf(msg)
 	}
 
+	serviceURL := fmt.Sprintf("%v.%v.svc.cluster.local", masterServiceName, cluster.Namespace)
+
 	c.Infof("Creating master node deployment...")
 	masterDeploymentName := fmt.Sprintf("%v-master-deployment", cluster.Name)
 	masterDeployment, err := c.deploymentLister.Deployments(cluster.Namespace).Get(masterDeploymentName)
 	if errors.IsNotFound(err) {
-		masterDeployment, err = c.kubeclientset.AppsV1beta2().Deployments(cluster.Namespace).Create(newMasterDeployment(cluster))
+		masterDeployment, err = c.kubeclientset.AppsV1beta2().Deployments(cluster.Namespace).Create(newMasterDeployment(cluster, serviceURL))
 	}
 
 	if err != nil {
