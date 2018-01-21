@@ -11,6 +11,7 @@ import (
 	listers "github.com/matt-tyler/elasticsearch-operator/pkg/client/listers/es/v1"
 	"github.com/matt-tyler/elasticsearch-operator/pkg/log"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/runtime"
 
 	clusterscheme "github.com/matt-tyler/elasticsearch-operator/pkg/client/clientset/versioned/scheme"
@@ -79,7 +80,13 @@ func NewController(config *rest.Config) *Controller {
 
 	resyncPeriod := 0 * time.Second
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeclientset, resyncPeriod)
+	listOptions := func(options *metav1.ListOptions) {
+		options.LabelSelector = labels.Set(map[string]string{
+			"operator": "elasticsearch-operator",
+		}).AsSelector().String()
+	}
+
+	kubeInformerFactory := kubeinformers.NewFilteredSharedInformerFactory(kubeclientset, resyncPeriod, "", listOptions)
 	esInformerFactory := informers.NewSharedInformerFactory(esclientset, resyncPeriod)
 
 	clusterInformer := esInformerFactory.Es().V1().Clusters()
@@ -293,7 +300,7 @@ func (c *Controller) Run(ctx context.Context) {
 
 	c.Infof("Starting Controller...")
 
-	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced, c.servicesSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for cache to sync"))
 		return
 	}

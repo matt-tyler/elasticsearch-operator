@@ -20,14 +20,17 @@ func newMasterDeployment(cluster *esV1.Cluster, serviceURL string) *v1beta2.Depl
 		},
 	}
 
+	labels := map[string]string{}
 	for k, v := range cluster.Labels {
 		metav1.AddLabelToSelector(&selector, k, v)
+		labels[k] = v
 	}
+	labels["operator"] = "elasticsearch-operator"
 
 	deployment := &v1beta2.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("%v-master-deployment", cluster.Name),
-			Labels: cluster.Labels,
+			Labels: labels,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(cluster, schema.GroupVersionKind{
 					Group:   esV1.SchemeGroupVersion.Group,
@@ -85,14 +88,17 @@ func newMasterService(cluster *esV1.Cluster) *v1.Service {
 		},
 	}
 
+	labels := map[string]string{}
 	for k, v := range cluster.Labels {
 		metav1.AddLabelToSelector(&selector, k, v)
+		labels[k] = v
 	}
+	labels["operator"] = "elasticsearch-operator"
 
 	service := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   fmt.Sprintf("%v-master-service", cluster.Name),
-			Labels: cluster.Labels,
+			Labels: labels,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(cluster, schema.GroupVersionKind{
 					Group:   esV1.SchemeGroupVersion.Group,
