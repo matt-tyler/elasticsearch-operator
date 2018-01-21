@@ -172,7 +172,7 @@ func (c *Controller) handleObject(obj interface{}) {
 
 		cluster, err := c.clusterLister.Clusters(object.GetNamespace()).Get(ownerRef.Name)
 		if err != nil {
-			c.Infof("Ignoring orphaned object '%s' of cluster '%s'", object.GetSelfLink, ownerRef.Name)
+			c.Infof("Ignoring orphaned object '%s' of cluster '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
 		}
 
