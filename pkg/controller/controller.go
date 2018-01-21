@@ -86,6 +86,30 @@ func NewController(config *rest.Config) *Controller {
 	serviceInformer := kubeInformerFactory.Core().V1().Services()
 	deploymentInformer := kubeInformerFactory.Apps().V1beta2().Deployments()
 
+	logger := log.NewLogger()
+
+	clusterscheme.AddToScheme(scheme.Scheme)
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(logger.Infof)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
+
+	controller := &Controller{
+		logger,
+		kubeclientset,
+		esclientset,
+		kubeInformerFactory,
+		esInformerFactory,
+		clusterInformer.Informer().HasSynced,
+		serviceInformer.Informer().HasSynced,
+		deploymentInformer.Informer().HasSynced,
+		clusterInformer.Lister(),
+		serviceInformer.Lister(),
+		deploymentInformer.Lister(),
+		queue,
+		recorder,
+	}
+
 	clusterInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
@@ -104,33 +128,61 @@ func NewController(config *rest.Config) *Controller {
 		},
 	})
 
+	serviceInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: controller.handleObject,
+		UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+			newSvc := newObj.(*corev1.Service)
+			oldSvc := oldObj.(*corev1.Service)
+			if newSvc.ResourceVersion == oldSvc.ResourceVersion {
+				return
+			}
+			controller.handleObject(newObj)
+		},
+		DeleteFunc: controller.handleObject,
+	})
+
 	ctx := context.Background()
 
 	go kubeInformerFactory.Start(ctx.Done())
 	go esInformerFactory.Start(ctx.Done())
 
-	logger := log.NewLogger()
+	return controller
+}
 
-	clusterscheme.AddToScheme(scheme.Scheme)
-	eventBroadcaster := record.NewBroadcaster()
-	eventBroadcaster.StartLogging(logger.Infof)
-	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
-	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: controllerAgentName})
+func (c *Controller) handleObject(obj interface{}) {
+	var object metav1.Object
+	var ok bool
+	if object, ok = obj.(metav1.Object); !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			runtime.HandleError(fmt.Errorf("error decoding object, invalid type"))
+			return
+		}
+		object, ok = tombstone.Obj.(metav1.Object)
+		if !ok {
+			runtime.HandleError(fmt.Errorf("error decoding object tombstone, invalid type"))
+		}
+		c.Infof("Recovered deleted object '%s' from tombstone", object.GetName)
+	}
+	c.Infof("Processing object: %s", object.GetName())
+	if ownerRef := metav1.GetControllerOf(object); ownerRef != nil {
+		if ownerRef.Kind != "Cluster" {
+			return
+		}
 
-	return &Controller{
-		logger,
-		kubeclientset,
-		esclientset,
-		kubeInformerFactory,
-		esInformerFactory,
-		clusterInformer.Informer().HasSynced,
-		serviceInformer.Informer().HasSynced,
-		deploymentInformer.Informer().HasSynced,
-		clusterInformer.Lister(),
-		serviceInformer.Lister(),
-		deploymentInformer.Lister(),
-		queue,
-		recorder,
+		cluster, err := c.clusterLister.Clusters(object.GetNamespace()).Get(ownerRef.Name)
+		if err != nil {
+			c.Infof("Ignoring orphaned object '%s' of cluster '%s'", object.GetSelfLink, ownerRef.Name)
+			return
+		}
+
+		var key string
+
+		if key, err = cache.MetaNamespaceKeyFunc(cluster); err != nil {
+			runtime.HandleError(err)
+			return
+		}
+		c.queue.AddRateLimited(key)
 	}
 }
 
