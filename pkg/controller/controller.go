@@ -212,13 +212,11 @@ func (c *Controller) sync(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	serviceURL := fmt.Sprintf("%v.%v.svc.cluster.local", masterServiceName, cluster.Namespace)
-
 	c.Infof("Creating master node deployment...")
 	masterDeploymentName := fmt.Sprintf("%v-master-deployment", cluster.Name)
 	masterDeployment, err := c.deploymentLister.Deployments(cluster.Namespace).Get(masterDeploymentName)
 	if errors.IsNotFound(err) {
-		masterDeployment, err = c.kubeclientset.AppsV1beta2().Deployments(cluster.Namespace).Create(newMasterDeployment(cluster, serviceURL))
+		masterDeployment, err = c.kubeclientset.AppsV1beta2().Deployments(cluster.Namespace).Create(newMasterDeployment(cluster, masterServiceName))
 	}
 
 	if err != nil {
@@ -243,7 +241,7 @@ func (c *Controller) Run(ctx context.Context) {
 
 	c.Infof("Starting Controller...")
 
-	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced, c.servicesSynced, c.deploymentsSynced) {
+	if !cache.WaitForCacheSync(ctx.Done(), c.clustersSynced) {
 		utilruntime.HandleError(fmt.Errorf("Timed out waiting for cache to sync"))
 		return
 	}
