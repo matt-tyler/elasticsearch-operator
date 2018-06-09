@@ -22,21 +22,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// eventQueue is for creating simple queues that indicate "something"
-// happened, and it might be a good idea to recheck the state
-func eventQueue(c chan<- struct{}) cache.ResourceEventHandler {
-	f := func(obj interface{}) {
-		c <- struct{}{}
-	}
-	return &cache.ResourceEventHandlerFuncs{
-		AddFunc:    f,
-		DeleteFunc: f,
-		UpdateFunc: func(old interface{}, new interface{}) {
-			f(new)
-		},
-	}
-}
-
 func something(handler func() (bool, error), events <-chan struct{}, timeout time.Duration) {
 	t := time.After(timeout)
 	for {

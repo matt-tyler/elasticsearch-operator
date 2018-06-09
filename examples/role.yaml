@@ -1,0 +1,9 @@
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: default
+  name: e2e-test-role
+rules:
+- apiGroups: ["", "extensions", "apps"]
+  resources: ["deployments", "services", "customresourcedefinitions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]  

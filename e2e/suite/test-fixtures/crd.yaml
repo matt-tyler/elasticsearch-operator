@@ -1,0 +1,7 @@
+apiVersion: "elasticsearch.matt-tyler.github.com/v1"
+kind: Cluster
+metadata:
+  name: example-cluster
+spec:
+  name: example-cluster
+  size: 1
