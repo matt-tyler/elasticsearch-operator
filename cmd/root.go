@@ -50,6 +50,9 @@ func CreateCustomResourceDefinition(clientset apiextensionsclient.Interface) (*a
 				Plural: esV1.ResourcePlural,
 				Kind:   reflect.TypeOf(esV1.Cluster{}).Name(),
 			},
+			Subresources: &apiextensionsv1beta1.CustomResourceSubresources{
+				Status: &apiextensionsv1beta1.CustomResourceSubresourceStatus{},
+			},
 		},
 	}
 

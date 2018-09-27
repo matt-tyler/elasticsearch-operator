@@ -202,7 +202,7 @@ var _ = Describe("#Create: Creating a cluster", func() {
 				return true, nil
 			}
 
-			something(check, events, time.Second*10)
+			something(check, events, time.Second*30)
 		})
 
 		It("then it should create a new replica set", func() {

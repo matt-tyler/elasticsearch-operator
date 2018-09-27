@@ -87,7 +87,6 @@ func newMasterService(cluster *esV1.Cluster) *v1.Service {
 			"role": "master",
 		},
 	}
-
 	labels := map[string]string{}
 	for k, v := range cluster.Labels {
 		metav1.AddLabelToSelector(&selector, k, v)

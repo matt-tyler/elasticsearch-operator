@@ -257,7 +257,7 @@ func Setup(c *rest.Config, image string) error {
 			deployment, err = deploymentClient.Create(deployment)
 			Expect(err).NotTo(HaveOccurred())
 
-			timeout := time.After(time.Second * 10)
+			timeout := time.After(time.Second * 20)
 
 			for {
 				select {
@@ -290,7 +290,7 @@ func Setup(c *rest.Config, image string) error {
 			defer cancel()
 			defer deleteRBAC()
 
-			timeout := time.After(time.Second * 10)
+			timeout := time.After(time.Second * 20)
 			for {
 				select {
 				case <-timeout:
@@ -323,7 +323,6 @@ func CopyConfig(config *rest.Config) *rest.Config {
 	return &rest.Config{
 		Host:          config.Host,
 		APIPath:       config.APIPath,
-		Prefix:        config.Prefix,
 		ContentConfig: config.ContentConfig,
 		Username:      config.Username,
 		Password:      config.Password,

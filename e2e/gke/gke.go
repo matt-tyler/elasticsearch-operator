@@ -18,6 +18,8 @@ import (
 	"encoding/base64"
 	"net/http"
 	"time"
+	"os/exec"
+	"strings"
 
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/container/v1"
@@ -32,12 +34,28 @@ type GkeClient struct {
 	client  *http.Client
 }
 
-func NewGkeClient(gkeClient *GkeClient, ctx context.Context, project, zone string) error {
+func NewGkeClient(gkeClient *GkeClient, ctx context.Context) error {
 	client, err := google.DefaultClient(ctx, container.CloudPlatformScope)
 	if err != nil {
 		return err
 	}
-	*gkeClient = GkeClient{project, zone, client}
+
+	gcloudPath, err := exec.LookPath("gcloud")
+	if err != nil {
+		return err
+	}
+
+	project, err := exec.Command(gcloudPath, "config", "get-value", "core/project").Output()
+	zone, err := exec.Command(gcloudPath, "config", "get-value", "compute/zone").Output()
+	if err != nil {
+		return err
+	}
+
+	*gkeClient = GkeClient{
+		strings.TrimRight(string(project), "\r\n"),
+		strings.TrimRight(string(zone), "\r\n"),
+		client,
+	}
 	return nil
 }
 
@@ -113,7 +131,7 @@ func (c *GkeClient) CreateCluster(clusterId string) (string, error) {
 		Cluster: &container.Cluster{
 			Name:                  clusterId,
 			Description:           "A cluster for e2e testing of elasticsearch-operator",
-			InitialClusterVersion: "1.8.5-gke.0",
+			InitialClusterVersion: "1.10.7-gke.2",
 			InitialNodeCount:      3,
 			EnableKubernetesAlpha: true,
 			NodeConfig: &container.NodeConfig{

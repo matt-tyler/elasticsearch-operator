@@ -18,7 +18,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -64,7 +63,7 @@ func RunE2ETests(t *testing.T) {
 	var config *rest.Config
 
 	if Up || Down {
-		if err := gke.NewGkeClient(&client, ctx, os.Getenv("PROJECT"), os.Getenv("ZONE")); err != nil {
+		if err := gke.NewGkeClient(&client, ctx); err != nil {
 			panic(err)
 		}
 	}
