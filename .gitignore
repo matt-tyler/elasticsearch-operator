@@ -17,3 +17,5 @@ elasticsearch-operator
 
 build/
 e2e/e2e
+
+.vscode/
