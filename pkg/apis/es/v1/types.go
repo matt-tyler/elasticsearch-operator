@@ -7,14 +7,12 @@ import (
 const ResourcePlural = "clusters"
 
 // +genclient
-// +genclient:noStatus
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type Cluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              ClusterSpec   `json:"spec"`
-	Status            ClusterStatus `json"status,omitempty"`
+	Spec              ClusterSpec `json:"spec"`
 }
 
 type ClusterSpec struct {
@@ -22,21 +20,10 @@ type ClusterSpec struct {
 	Size int    `json:"size"`
 }
 
-type ClusterStatus struct {
-	State ClusterState `json:"state,omitempty"`
-}
-
-type ClusterState string
-
-const (
-	ClusterStateCreated  ClusterState = "Created"
-	ClusterStateUpdating ClusterState = "Updating"
-)
-
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 type ClusterList struct {
-	metav1.TypeMeta `json:,inline"`
+	metav1.TypeMeta `json:"inline"`
 	metav1.ListMeta `json:"metadata"`
 	Items           []Cluster `json:"items"`
 }
